@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../models/product.dart';
+import '../../domain/models/product.dart';
 
-class InventoryService {
-  InventoryService({FirebaseFirestore? firestore})
+class FirebaseInventoryDataSource {
+  FirebaseInventoryDataSource({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
   final FirebaseFirestore _firestore;
 
@@ -41,7 +41,10 @@ class InventoryService {
     final end = DateTime(to.year, to.month, to.day + 1);
     return _firestore
         .collection('transactions')
-        .where('transactionDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where(
+          'transactionDate',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+        )
         .where('transactionDate', isLessThan: Timestamp.fromDate(end))
         .snapshots();
   }
@@ -58,8 +61,18 @@ class InventoryService {
         .where('transactionDate', isLessThan: Timestamp.fromDate(end))
         .get();
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final prefix =
         '${date.day.toString().padLeft(2, '0')}_${months[date.month - 1]}_${date.year}';
@@ -139,10 +152,31 @@ class InventoryService {
   }) async {
     final image = imageUrl?.trim();
     final batch = _firestore.batch();
-    final productData = {'name': name, 'category': category, 'threshold': threshold, 'imageUrl': image, 'updatedAt': FieldValue.serverTimestamp()};
-    final inventoryData = {'name': name, 'category': category, 'threshold': threshold, 'imageUrl': image, 'avgCost': cost, 'lastBuyPrice': cost, 'costValue': product.quantity * cost, 'updatedAt': FieldValue.serverTimestamp()};
-    batch.update(_firestore.collection('products').doc(product.id), productData);
-    batch.update(_firestore.collection('inventory').doc(product.id), inventoryData);
+    final productData = {
+      'name': name,
+      'category': category,
+      'threshold': threshold,
+      'imageUrl': image,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    final inventoryData = {
+      'name': name,
+      'category': category,
+      'threshold': threshold,
+      'imageUrl': image,
+      'avgCost': cost,
+      'lastBuyPrice': cost,
+      'costValue': product.quantity * cost,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    batch.update(
+      _firestore.collection('products').doc(product.id),
+      productData,
+    );
+    batch.update(
+      _firestore.collection('inventory').doc(product.id),
+      inventoryData,
+    );
     await batch.commit();
   }
 
