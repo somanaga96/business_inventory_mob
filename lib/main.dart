@@ -76,10 +76,15 @@ class _InventoryHomeState extends State<InventoryHome> {
     stream: firebaseReady ? controller.products : null,
     builder: (context, snapshot) {
       final products = snapshot.data ?? sample;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      final billButtonWidth = screenWidth * .90;
+      final billButtonHeight = screenHeight * .07;
       final views = [
         Dashboard(
           products: products,
-          showInventory: () => setState(() => tab = 2),
+          controller: controller,
+          openTab: (index) => setState(() => tab = index),
         ),
         Products(products: products, add: addProduct, edit: editProduct, remove: deleteProduct),
         Stock(products: products, adjust: adjust),
@@ -87,7 +92,8 @@ class _InventoryHomeState extends State<InventoryHome> {
         TransactionHistory(controller: controller),
         Bills(products: products, submit: recordTransaction, controller: controller),
         BillsHistory(controller: controller),
-        Alerts(products: products, update: editProduct),
+        Alerts(products: products, update: editProduct, remove: deleteProduct),
+        BusinessSummary(controller: controller),
       ];
       return Scaffold(
         appBar: AppBar(
@@ -120,9 +126,16 @@ class _InventoryHomeState extends State<InventoryHome> {
           ),
           actions: [
             IconButton(
-              onPressed: addProduct,
-              icon: const Icon(Icons.add_circle_outline, color: primary),
+              tooltip: 'Home',
+              onPressed: tab == 0 ? null : () => setState(() => tab = 0),
+              icon: const Icon(Icons.home_outlined, color: primary),
             ),
+            if (tab != 5)
+              IconButton(
+                tooltip: 'Add bill',
+                onPressed: openNewBill,
+                icon: const Icon(Icons.receipt_long_outlined, color: primary),
+              ),
           ],
         ),
         drawer: Drawer(
@@ -155,6 +168,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Bills',
                   'Bills history',
                   'Alerts',
+                  'Business summary',
                 ].asMap().entries.map(
                   (entry) => ListTile(
                     selected: tab == entry.key,
@@ -169,6 +183,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                         Icons.receipt_long_outlined,
                         Icons.receipt_long,
                         Icons.warning_amber_outlined,
+                        Icons.insights_outlined,
                       ][entry.key],
                       color: tab == entry.key ? primary : null,
                     ),
@@ -184,18 +199,27 @@ class _InventoryHomeState extends State<InventoryHome> {
           ),
         ),
         body: SafeArea(child: views[tab]),
-        floatingActionButton: tab == 1 || tab == 2
-            ? FloatingActionButton.extended(
-                onPressed: addProduct,
-                backgroundColor: primary,
-                foregroundColor: Colors.white,
-                icon: const Icon(Icons.add),
-                label: const Text('Add product'),
-              )
-            : null,
+        floatingActionButton: tab == 5
+            ? null
+            : SizedBox(
+                width: billButtonWidth,
+                height: billButtonHeight,
+                child: FloatingActionButton.extended(
+            tooltip: 'Add bill',
+            onPressed: openNewBill,
+            backgroundColor: primary,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: const Text('Add bill'),
+                ),
+              ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       );
     },
   );
+
+  void openNewBill() => setState(() => tab = 5);
+
   Future<void> addProduct() async {
     final name = TextEditingController(),
         category = TextEditingController(text: 'Other'),
@@ -206,46 +230,52 @@ class _InventoryHomeState extends State<InventoryHome> {
     final save = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (c) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.of(c).viewInsets.bottom + 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Add product',
-                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 16),
-              field(name, 'Product name'),
-              field(category, 'Category'),
-              field(imageUrl, 'Image URL'),
-              Row(
-                children: [
-                  Expanded(child: field(cost, 'Cost', true)),
-                  const SizedBox(width: 12),
-                  Expanded(child: field(qty, 'Opening stock', true)),
-                ],
-              ),
-              field(min, 'Low stock level', true),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: primary,
-                  minimumSize: const Size.fromHeight(50),
-                ),
-                child: const Text('Save product'),
-              ),
-            ],
+      builder: (c) {
+        final screenWidth = MediaQuery.sizeOf(c).width;
+        final screenHeight = MediaQuery.sizeOf(c).height;
+        final horizontalInset = screenWidth * .05;
+        final verticalInset = screenHeight * .03;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalInset,
+            verticalInset,
+            horizontalInset,
+            MediaQuery.viewInsetsOf(c).bottom + verticalInset,
           ),
-        ),
-      ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Add product',
+                  style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 16),
+                field(name, 'Product name'),
+                field(category, 'Category'),
+                field(imageUrl, 'Image URL'),
+                Row(
+                  children: [
+                    Expanded(child: field(cost, 'Cost', true)),
+                    const SizedBox(width: 12),
+                    Expanded(child: field(qty, 'Opening stock', true)),
+                  ],
+                ),
+                field(min, 'Low stock level', true),
+                FilledButton(
+                  onPressed: () => Navigator.pop(c, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primary,
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                  child: const Text('Save product'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
     if (save == true && name.text.trim().isNotEmpty) {
       await controller.addProduct(
@@ -321,20 +351,41 @@ class _InventoryHomeState extends State<InventoryHome> {
   }
 }
 
+class ResponsivePage extends StatelessWidget {
+  const ResponsivePage({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        screenWidth * .05,
+        screenHeight * .03,
+        screenWidth * .05,
+        screenHeight * .12,
+      ),
+      children: children,
+    );
+  }
+}
+
 class Dashboard extends StatelessWidget {
+  /*
   const Dashboard({
     super.key,
     required this.products,
-    required this.showInventory,
+    required this.openTab,
   });
   final List<Product> products;
-  final VoidCallback showInventory;
+  final ValueChanged<int> openTab;
   @override
   Widget build(BuildContext context) {
     final value = products.fold(0.0, (a, p) => a + p.cost * p.quantity);
     final low = products.where((p) => p.low).length;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+    return ResponsivePage(
       children: [
         const Text(
           'Overview',
@@ -349,91 +400,375 @@ class Dashboard extends StatelessWidget {
           style: const TextStyle(color: Color(0xFF8493AD), fontSize: 16),
         ),
         const SizedBox(height: 24),
+        DashboardCard(
+          title: 'Inventory',
+          subtitle: 'View and manage your stock',
+          icon: Icons.inventory_2_outlined,
+          color: primary,
+          onTap: () => openTab(2),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              DashboardPill(label: '${products.length} products'),
+              DashboardPill(label: '₹${value.toStringAsFixed(0)} value'),
+              DashboardPill(label: '${products.where((p) => p.quantity > 0).length} in stock'),
+              DashboardPill(label: '$low alerts', color: low == 0 ? const Color(0xFF168B57) : const Color(0xFFC17700)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        DashboardCard(
+          title: 'Bills',
+          subtitle: 'Create a sale or review completed bills',
+          icon: Icons.receipt_long_outlined,
+          color: const Color(0xFF22B573),
+          onTap: () => openTab(5),
+          child: Row(children: [
+            Expanded(child: FilledButton.icon(onPressed: () => openTab(5), icon: const Icon(Icons.add), label: const Text('New bill'))),
+            const SizedBox(width: 10),
+            Expanded(child: OutlinedButton.icon(onPressed: () => openTab(6), icon: const Icon(Icons.history), label: const Text('History'))),
+          ]),
+        ),
+        const SizedBox(height: 22),
+        const Text('Quick actions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: () => openTab(3), icon: const Icon(Icons.swap_horiz), label: const Text('Stock movement'))),
+          const SizedBox(width: 10),
+          Expanded(child: OutlinedButton.icon(onPressed: () => openTab(4), icon: const Icon(Icons.history), label: const Text('Transactions'))),
+        ]),
+
+      ],
+    );
+  }
+}
+
+  */
+  const Dashboard({
+    super.key,
+    required this.products,
+    required this.controller,
+    required this.openTab,
+  });
+
+  final List<Product> products;
+  final InventoryController controller;
+  final ValueChanged<int> openTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = products.fold(0.0, (total, product) => total + product.cost * product.quantity);
+    final inStock = products.where((product) => product.quantity > 0).length;
+    final lowStock = products.where((product) => product.low).length;
+    return ResponsivePage(
+      children: [
+        const Text('Overview', style: TextStyle(fontSize: 31, fontWeight: FontWeight.w800, color: ink)),
+        Text('${products.length} products', style: const TextStyle(color: Color(0xFF8493AD), fontSize: 16)),
+        const SizedBox(height: 24),
+        BillsOverviewCard(controller: controller, openBills: () => openTab(6)),
+        const SizedBox(height: 14),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.23,
+          childAspectRatio: 1.55,
           children: [
-            Metric(
-              'Total products',
-              '${products.length}',
-              Icons.inventory_2_outlined,
-              primary,
+            Metric('Total products', '${products.length}', Icons.inventory_2_outlined, primary, onTap: () => openTab(1)),
+            InventorySummaryMetric(
+              value: value,
+              onTap: () => openTab(2),
             ),
-            Metric(
-              'Inventory value',
-              '₹${value.toStringAsFixed(0)}',
-              Icons.account_balance_wallet_outlined,
-              const Color(0xFF22B573),
-            ),
-            Metric(
-              'Products in stock',
-              '${products.where((p) => p.quantity > 0).length}',
-              Icons.check_circle_outline,
-              const Color(0xFF22B573),
-            ),
-            Metric(
-              'Stock alerts',
-              '$low',
-              Icons.warning_amber_rounded,
-              const Color(0xFFF59E0B),
-            ),
+            Metric('Products in stock', '$inStock', Icons.check_circle_outline, const Color(0xFF22B573), onTap: () => openTab(2)),
+            Metric('Stock alerts', '$lowStock', Icons.warning_amber_rounded, const Color(0xFFF59E0B), onTap: () => openTab(7)),
           ],
         ),
-        const SizedBox(height: 28),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Current inventory',
-              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
-            ),
-            TextButton(onPressed: showInventory, child: const Text('View all')),
-          ],
-        ),
-        ...products.take(4).map((p) => ProductTile(product: p)),
       ],
     );
   }
 }
 
-class Metric extends StatelessWidget {
-  const Metric(this.label, this.value, this.icon, this.color, {super.key});
-  final String label, value;
+class BillsOverviewCard extends StatefulWidget {
+  const BillsOverviewCard({super.key, required this.controller, required this.openBills});
+
+  final InventoryController controller;
+  final VoidCallback openBills;
+
+  @override
+  State<BillsOverviewCard> createState() => _BillsOverviewCardState();
+}
+
+class _BillsOverviewCardState extends State<BillsOverviewCard> {
+  DateTime selectedDate = DateTime.now();
+
+  String _dateLabel(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: widget.controller.transactionsForDate(selectedDate),
+    builder: (context, snapshot) {
+      final billPattern = RegExp(r'^\d{2}_[A-Z][a-z]{2}_\d{4}_\d+$');
+      final bills = <String>{};
+      var totalValue = 0.0;
+      for (final doc in snapshot.data?.docs ?? []) {
+        final data = doc.data();
+        final billNumber = data['note']?.toString() ?? '';
+        if (!billPattern.hasMatch(billNumber)) continue;
+        bills.add(billNumber);
+        final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+        totalValue += quantity * price;
+      }
+      return Card(
+        elevation: 0,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: primary.withValues(alpha: .22)),
+        ),
+        child: InkWell(
+          onTap: widget.openBills,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: primary.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.receipt_long_outlined, color: primary),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text('Bills summary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    ),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: primary),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date != null) setState(() => selectedDate = date);
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                  label: Text(_dateLabel(selectedDate)),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(child: _BillMetric(label: 'Bills', value: '${bills.length}')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _BillMetric(label: 'Total value', value: 'Rs ${totalValue.toStringAsFixed(2)}')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _BillMetric extends StatelessWidget {
+  const _BillMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: primary.withValues(alpha: .06),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF7C8AA3))),
+      ],
+    ),
+  );
+}
+
+class DashboardCard extends StatelessWidget {
+  const DashboardCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
   final IconData icon;
   final Color color;
+  final VoidCallback onTap;
+  final Widget child;
+
   @override
   Widget build(BuildContext context) => Card(
     elevation: 0,
+    clipBehavior: Clip.antiAlias,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(18),
+      side: BorderSide(color: color.withValues(alpha: .22)),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: color.withValues(alpha: .12),
+                  child: Icon(icon, color: color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                      Text(subtitle, style: const TextStyle(color: Color(0xFF7C8AA3))),
+                    ],
+                  ),
+                ),
+                Icon(Icons.arrow_forward_ios_rounded, size: 16, color: color),
+              ],
+            ),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class DashboardPill extends StatelessWidget {
+  const DashboardPill({super.key, required this.label, this.color = primary});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .10),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+  );
+}
+
+class InventorySummaryMetric extends StatelessWidget {
+  const InventorySummaryMetric({
+    super.key,
+    required this.value,
+    required this.onTap,
+  });
+
+  final double value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    elevation: 0,
+    clipBehavior: Clip.antiAlias,
+    color: primary.withValues(alpha: .035),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(18),
+      side: BorderSide(color: primary.withValues(alpha: .18)),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.account_balance_wallet_outlined, color: primary),
+            const Spacer(),
+            Text('Rs ${value.toStringAsFixed(0)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: ink)),
+            const Text('Inventory', style: TextStyle(fontSize: 12, color: Color(0xFF7C8AA3))),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class Metric extends StatelessWidget {
+  const Metric(
+    this.label,
+    this.value,
+    this.icon,
+    this.color, {
+    super.key,
+    this.onTap,
+  });
+  final String label, value;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) => Card(
+    elevation: 0,
+    clipBehavior: Clip.antiAlias,
+    color: color.withValues(alpha: .035),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
       side: BorderSide(color: color.withValues(alpha: .18)),
     ),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: ink,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color),
+            const Spacer(),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: ink,
+              ),
             ),
-          ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF7C8AA3)),
-          ),
-        ],
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF7C8AA3)),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -446,8 +781,7 @@ class Products extends StatelessWidget {
   final Future<void> Function(Product) edit;
   final Future<void> Function(Product) remove;
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+  Widget build(BuildContext context) => ResponsivePage(
     children: [
       Row(
         children: [
@@ -537,8 +871,7 @@ class Stock extends StatelessWidget {
   final List<Product> products;
   final Future<void> Function(Product, int) adjust;
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+  Widget build(BuildContext context) => ResponsivePage(
     children: [
       const Text(
         'Inventory',
@@ -550,7 +883,15 @@ class Stock extends StatelessWidget {
         style: TextStyle(color: Color(0xFF8493AD)),
       ),
       const SizedBox(height: 18),
-      ...products.map(
+      if (products.where((p) => p.quantity > 0).isEmpty)
+        const Card(
+          child: ListTile(
+            leading: Icon(Icons.inventory_2_outlined),
+            title: Text('No products in inventory'),
+            subtitle: Text('Products with zero stock are hidden here.'),
+          ),
+        ),
+      ...products.where((p) => p.quantity > 0).map(
         (p) => Card(
           elevation: 0,
           margin: const EdgeInsets.only(bottom: 12),
@@ -584,15 +925,32 @@ class Stock extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '${p.quantity} units available',
-                        style: TextStyle(
-                          color: p.low
-                              ? const Color(0xFFC17700)
-                              : const Color(0xFF71809A),
-                        ),
+                        'Price: Rs ${p.cost.toStringAsFixed(2)}',
+                        style: const TextStyle(color: Color(0xFF71809A)),
                       ),
                     ],
                   ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${p.quantity}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'units available',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: p.low
+                            ? const Color(0xFFC17700)
+                            : const Color(0xFF71809A),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -627,7 +985,7 @@ class NewTransaction extends StatefulWidget {
 
 class _NewTransactionState extends State<NewTransaction> {
   Product? selected;
-  String type = 'Sale';
+  String type = 'Purchase';
   final quantity = TextEditingController();
   final price = TextEditingController();
   final party = TextEditingController();
@@ -694,17 +1052,11 @@ class _NewTransactionState extends State<NewTransaction> {
     final selectedValue = selected == null
         ? null
         : widget.products.where((p) => p.id == selected!.id).firstOrNull;
-    return ListView(
-    padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+    return ResponsivePage(
     children: [
       const Text(
-        'Transactions',
+        'Purchase',
         style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
-      ),
-      const SizedBox(height: 6),
-      const Text(
-        'Every transaction changes inventory automatically.',
-        style: TextStyle(color: Color(0xFF8493AD)),
       ),
       const SizedBox(height: 24),
       Card(
@@ -714,25 +1066,6 @@ class _NewTransactionState extends State<NewTransaction> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'INVENTORY MOVEMENT',
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Record transaction',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Use Purchase, Sale, Return, Damage or Adjustment.',
-                style: TextStyle(color: Color(0xFF8493AD)),
-              ),
-              const SizedBox(height: 20),
               DropdownButtonFormField<Product>(
                 initialValue: selectedValue,
                 isExpanded: true,
@@ -785,19 +1118,6 @@ class _NewTransactionState extends State<NewTransaction> {
                 onChanged: (p) => setState(() => selected = p),
               ),
               const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: type,
-                decoration: const InputDecoration(
-                  labelText: 'Transaction type',
-                  border: OutlineInputBorder(),
-                ),
-                items:
-                    const ['Purchase', 'Sale', 'Return', 'Damage', 'Adjustment']
-                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
-                        .toList(),
-                onChanged: (v) => setState(() => type = v ?? 'Purchase'),
-              ),
-              const SizedBox(height: 14),
               TextField(
                 controller: quantity,
                 keyboardType: TextInputType.number,
@@ -813,9 +1133,7 @@ class _NewTransactionState extends State<NewTransaction> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: type == 'Sale'
-                      ? 'Sell price per unit'
-                      : 'Buy price per unit',
+                  labelText: 'Buy price per unit',
                   hintText: selected == null
                       ? '0.00'
                       : selected!.cost.toStringAsFixed(2),
@@ -915,29 +1233,50 @@ class _BillsState extends State<Bills> {
   final prices = <String, double>{};
   int billSequence = 1;
   late String billNumber;
+  bool billNumberReady = false;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? billSubscription;
   static const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  String newBillNumber() {
-    final now = DateTime.now();
-    return '${now.day.toString().padLeft(2, '0')}_${months[now.month - 1]}_${now.year}_${billSequence++}';
-  }
+
+  String datePrefix(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}_${months[date.month - 1]}_${date.year}';
+
+  String billNumberFor(DateTime date, int sequence) =>
+      '${datePrefix(date)}_$sequence';
+
   @override
   void initState() {
     super.initState();
-    billNumber = newBillNumber();
+    billNumber = '${datePrefix(DateTime.now())}_…';
+    _loadInitialBillNumber();
     billSubscription = widget.controller.transactions.listen((snapshot) {
       final today = DateTime.now();
+      final prefix = datePrefix(today);
+      final pattern = RegExp('^${RegExp.escape(prefix)}_(\\d+)\$');
       var highest = 0;
       for (final doc in snapshot.docs) {
-        final parts = (doc.data()['note']?.toString() ?? '').split('_');
-        final rawDate = doc.data()['transactionDate'];
-        final date = rawDate is Timestamp ? rawDate.toDate() : null;
-        if (date != null && date.year == today.year && date.month == today.month && date.day == today.day && parts.length == 4) {
-          final number = int.tryParse(parts.last) ?? 0;
-          if (number > highest) highest = number;
-        }
+        final match = pattern.firstMatch(doc.data()['note']?.toString() ?? '');
+        final number = int.tryParse(match?.group(1) ?? '') ?? 0;
+        if (number > highest) highest = number;
       }
-      if (mounted && highest + 1 > billSequence) setState(() { billSequence = highest + 1; billNumber = newBillNumber(); });
+      final nextSequence = highest + 1;
+      final nextBillNumber = billNumberFor(today, nextSequence);
+      if (mounted && billNumberReady && nextSequence > billSequence) {
+        setState(() {
+          billSequence = nextSequence;
+          billNumber = nextBillNumber;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadInitialBillNumber() async {
+    final today = DateTime.now();
+    final nextSequence = await widget.controller.nextBillSequence(today);
+    if (!mounted) return;
+    setState(() {
+      billSequence = nextSequence;
+      billNumber = billNumberFor(today, nextSequence);
+      billNumberReady = true;
     });
   }
   @override
@@ -951,7 +1290,10 @@ class _BillsState extends State<Bills> {
   }
   Product? find(String id) => widget.products.where((p) => p.id == id).firstOrNull;
   double get total => cart.entries.fold(0, (totalValue, e) => totalValue + (prices[e.key] ?? find(e.key)?.cost ?? 0) * e.value);
-  Product? get selectedProduct => product == null ? null : find(product!.id);
+  Product? get selectedProduct {
+    final selected = product == null ? null : find(product!.id);
+    return selected?.quantity == 0 ? null : selected;
+  }
   void add() {
     final qty = int.tryParse(quantity.text) ?? 0;
     if (product == null || qty <= 0) return;
@@ -977,21 +1319,35 @@ class _BillsState extends State<Bills> {
         content: Text('Order: $billNumber\nItems: ${cart.length}\nTotal: ₹${total.toStringAsFixed(2)}\n\nConnect a Bluetooth thermal printer in the device settings, then use Print bill to print this receipt.'),
         actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')), FilledButton(onPressed: () { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Thermal printing requires a Bluetooth printer plugin configured for this device.'))); }, child: const Text('Print bill'))],
       ));
-      setState(() { cart.clear(); prices.clear(); customer.clear(); billNumber = newBillNumber(); });
+      setState(() {
+        cart.clear();
+        prices.clear();
+        customer.clear();
+        city.clear();
+        quantity.text = '1';
+        price.clear();
+        product = null;
+        billSequence++;
+        billNumber = billNumberFor(DateTime.now(), billSequence);
+      });
     }
   }
   Future<void> printBill() async => showDialog(context: context, builder: (c) => AlertDialog(title: const Text('Print bill'), content: Text('Order $billNumber\nTotal ₹${total.toStringAsFixed(2)}'), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect a Bluetooth thermal printer to print this bill.'))); }, child: const Text('Print'))]));
   @override
-  Widget build(BuildContext context) => ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 100), children: [
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final billNumberWidth = screenWidth * .28;
+    final quantityWidth = screenWidth * .18;
+    return ResponsivePage(children: [
     const Text('Bills', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
     const Text('Add multiple goods to one sale and generate a cumulative bill.', style: TextStyle(color: Color(0xFF8493AD))),
     const SizedBox(height: 18),
-    Row(children: [Expanded(child: TextField(controller: customer, decoration: const InputDecoration(labelText: 'Shop / customer name', border: OutlineInputBorder()))), const SizedBox(width: 10), SizedBox(width: 150, child: InputDecorator(decoration: const InputDecoration(labelText: 'Bill no.', border: OutlineInputBorder()), child: Text(billNumber, overflow: TextOverflow.ellipsis))) ]),
+    Row(children: [Expanded(child: TextField(controller: customer, decoration: const InputDecoration(labelText: 'Shop / customer name', border: OutlineInputBorder()))), const SizedBox(width: 10), SizedBox(width: billNumberWidth, child: InputDecorator(decoration: const InputDecoration(labelText: 'Bill no.', border: OutlineInputBorder()), child: Text(billNumber, overflow: TextOverflow.ellipsis))) ]),
     const SizedBox(height: 14),
     TextField(controller: city, decoration: const InputDecoration(labelText: 'City / Village', border: OutlineInputBorder())),
     const SizedBox(height: 14),
-    Row(children: [Expanded(child: DropdownButtonFormField<Product>(initialValue: selectedProduct, isExpanded: true, decoration: const InputDecoration(labelText: 'Product', border: OutlineInputBorder()), items: widget.products.map((p) => DropdownMenuItem(value: p, child: Row(children: [Container(width: 34, height: 34, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(8)), child: p.imageUrl == null || p.imageUrl!.isEmpty ? const Icon(Icons.inventory_2_outlined, color: primary, size: 19) : Image.network(p.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, color: primary, size: 19))), const SizedBox(width: 10), Expanded(child: Text('${p.name} (${p.quantity})', overflow: TextOverflow.ellipsis))]))).toList(), onChanged: (v) => setState(() => product = v))), const SizedBox(width: 10), SizedBox(width: 82, child: TextField(controller: quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', border: OutlineInputBorder()))) ]),
+    Row(children: [Expanded(child: DropdownButtonFormField<Product>(initialValue: selectedProduct, isExpanded: true, decoration: const InputDecoration(labelText: 'Product', border: OutlineInputBorder()), items: widget.products.where((p) => p.quantity > 0).map((p) => DropdownMenuItem(value: p, child: Row(children: [Container(width: 34, height: 34, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(8)), child: p.imageUrl == null || p.imageUrl!.isEmpty ? const Icon(Icons.inventory_2_outlined, color: primary, size: 19) : Image.network(p.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, color: primary, size: 19))), const SizedBox(width: 10), Expanded(child: Text('${p.name} (${p.quantity})', overflow: TextOverflow.ellipsis))]))).toList(), onChanged: (v) => setState(() => product = v))), const SizedBox(width: 10), SizedBox(width: quantityWidth, child: TextField(controller: quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', border: OutlineInputBorder()))) ]),
     const SizedBox(height: 10),
     TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Sale price per unit', hintText: selectedProduct == null ? 'Enter price' : selectedProduct!.cost.toStringAsFixed(2), prefixText: '₹ ', border: const OutlineInputBorder())),
     const SizedBox(height: 10),
@@ -1001,8 +1357,9 @@ class _BillsState extends State<Bills> {
     const Divider(),
     Align(alignment: Alignment.centerRight, child: Text('Total ₹${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
     const SizedBox(height: 12),
-    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: cart.isEmpty ? null : printBill, icon: const Icon(Icons.print_outlined), label: const Text('Print bill'))), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: cart.isEmpty ? null : complete, icon: const Icon(Icons.receipt_long), label: const Text('Complete sale')))]),
-  ]);
+    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: cart.isEmpty || !billNumberReady ? null : printBill, icon: const Icon(Icons.print_outlined), label: const Text('Print bill'))), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: cart.isEmpty || !billNumberReady ? null : complete, icon: const Icon(Icons.receipt_long), label: const Text('Complete sale')))]),
+    ]);
+  }
 }
 
 class TransactionHistory extends StatefulWidget {
@@ -1029,8 +1386,7 @@ class _TransactionHistoryState extends State<TransactionHistory> {
         return text.contains(query.toLowerCase()) &&
             (typeFilter == 'All types' || '${m['type']}' == typeFilter);
       }).toList();
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+      return ResponsivePage(
         children: [
           const Text(
             'Transaction history',
@@ -1177,6 +1533,15 @@ class _BillsHistoryState extends State<BillsHistory> {
   DateTime selectedDate = DateTime.now();
   bool sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
   String dateLabel(DateTime d) => '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
+  void showExportOptions(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.print_outlined), title: const Text('Print with Bluetooth thermal printer'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Print uses bills from the selected date.'))); }),
+      ListTile(leading: const Icon(Icons.picture_as_pdf_outlined), title: const Text('Export PDF'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF export uses bills from the selected date.'))); }),
+      ListTile(leading: const Icon(Icons.table_chart_outlined), title: const Text('Export Excel'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel export uses bills from the selected date.'))); }),
+      ListTile(leading: const Icon(Icons.description_outlined), title: const Text('Export CSV'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV export uses bills from the selected date.'))); }),
+    ])),
+  );
   @override
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
     stream: widget.controller.transactions,
@@ -1203,12 +1568,18 @@ class _BillsHistoryState extends State<BillsHistory> {
         }
       }
       final averageBill = grouped.isEmpty ? 0 : dailySales / grouped.length;
-      return ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 100), children: [
+      return ResponsivePage(children: [
         const Text('Bills history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text('Daily cumulative bills and their item details.', style: TextStyle(color: Color(0xFF8493AD))),
         const SizedBox(height: 18),
         OutlinedButton.icon(onPressed: () async { final picked = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2100), initialDate: selectedDate); if (picked != null) setState(() => selectedDate = picked); }, icon: const Icon(Icons.calendar_today_outlined), label: Text('Showing ${dateLabel(selectedDate)}'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52))),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: () => showExportOptions(context), icon: const Icon(Icons.file_download_outlined), label: const Text('Export'))),
+          const SizedBox(width: 10),
+          Expanded(child: FilledButton.icon(onPressed: () => showExportOptions(context), icon: const Icon(Icons.print_outlined), label: const Text('Print'))),
+        ]),
         const SizedBox(height: 14),
         GridView.count(
           crossAxisCount: 2,
@@ -1266,15 +1637,135 @@ class _BillSummaryCard extends StatelessWidget {
   );
 }
 
+class BusinessSummary extends StatefulWidget {
+  const BusinessSummary({super.key, required this.controller});
+  final InventoryController controller;
+
+  @override
+  State<BusinessSummary> createState() => _BusinessSummaryState();
+}
+
+class _BusinessSummaryState extends State<BusinessSummary> {
+  DateTime from = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime to = DateTime.now();
+
+  String dateLabel(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  Future<void> pickDate(bool isFrom) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? from : to,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isFrom) {
+        from = picked.isAfter(to) ? to : picked;
+      } else {
+        to = picked.isBefore(from) ? from : picked;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: widget.controller.transactionsForRange(from, to),
+    builder: (context, snapshot) {
+      var sales = 0.0;
+      var purchases = 0.0;
+      var profit = 0.0;
+      var loss = 0.0;
+      var itemsSold = 0;
+      for (final doc in snapshot.data?.docs ?? []) {
+        final data = doc.data();
+        final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+        final cost = (data['mrp'] as num?)?.toDouble() ?? 0;
+        final amount = quantity * price;
+        switch (data['type']) {
+          case 'Sale':
+            sales += amount;
+            profit += (price - cost) * quantity;
+            itemsSold += quantity.toInt();
+            break;
+          case 'Purchase':
+            purchases += amount;
+            break;
+          case 'Damage':
+            loss += cost * quantity;
+            break;
+        }
+      }
+      return ResponsivePage(children: [
+        const Text('Business summary', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        const Text('Sales and stock performance for a selected period.', style: TextStyle(color: Color(0xFF8493AD))),
+        const SizedBox(height: 18),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: () => pickDate(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('From ${dateLabel(from)}'))),
+          const SizedBox(width: 10),
+          Expanded(child: OutlinedButton.icon(onPressed: () => pickDate(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('To ${dateLabel(to)}'))),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: () => _showExportOptions(context), icon: const Icon(Icons.file_download_outlined), label: const Text('Export'))),
+          const SizedBox(width: 10),
+          Expanded(child: FilledButton.icon(onPressed: () => _showExportOptions(context, printOnly: true), icon: const Icon(Icons.print_outlined), label: const Text('Print'))),
+        ]),
+        const SizedBox(height: 16),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.45,
+          children: [
+            _BillSummaryCard(label: 'Sales', value: 'Rs ${sales.toStringAsFixed(2)}', icon: Icons.sell_outlined, color: const Color(0xFF168B57)),
+            _BillSummaryCard(label: 'Purchase inflow', value: 'Rs ${purchases.toStringAsFixed(2)}', icon: Icons.shopping_bag_outlined, color: primary),
+            _BillSummaryCard(label: 'Profit', value: 'Rs ${profit.toStringAsFixed(2)}', icon: Icons.trending_up, color: const Color(0xFF168B57)),
+            _BillSummaryCard(label: 'Loss', value: 'Rs ${loss.toStringAsFixed(2)}', icon: Icons.trending_down, color: const Color(0xFFD34C4C)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Card(child: ListTile(leading: const Icon(Icons.inventory_2_outlined, color: primary), title: Text('$itemsSold items sold'), subtitle: const Text('Based on completed sale transactions in this period.'))),
+      ]);
+    },
+  );
+
+  void _showExportOptions(BuildContext context, {bool printOnly = false}) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.print_outlined), title: const Text('Bluetooth thermal printer'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect a Bluetooth thermal printer to print this report.'))); }),
+          if (!printOnly) ...[
+            ListTile(leading: const Icon(Icons.picture_as_pdf_outlined), title: const Text('Export PDF'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF export will use the selected date range.'))); }),
+            ListTile(leading: const Icon(Icons.table_chart_outlined), title: const Text('Export Excel'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel export will use the selected date range.'))); }),
+            ListTile(leading: const Icon(Icons.description_outlined), title: const Text('Export CSV'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV export will use the selected date range.'))); }),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
 class Alerts extends StatelessWidget {
-  const Alerts({super.key, required this.products, required this.update});
+  const Alerts({
+    super.key,
+    required this.products,
+    required this.update,
+    required this.remove,
+  });
   final List<Product> products;
   final Future<void> Function(Product) update;
+  final Future<void> Function(Product) remove;
   @override
   Widget build(BuildContext context) {
     final alerts = products.where((p) => p.low).toList();
-    return ListView(
-      padding: const EdgeInsets.all(20),
+    return ResponsivePage(
       children: [
         const Text(
           'Stock alerts',
@@ -1300,7 +1791,21 @@ class Alerts extends StatelessWidget {
                 color: Color(0xFFE59A00),
               ),
               title: Text('${p.name} is running low'),
-              trailing: IconButton(onPressed: () => update(p), icon: const Icon(Icons.edit_outlined)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Edit product',
+                    onPressed: () => update(p),
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete product',
+                    onPressed: () => remove(p),
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                ],
+              ),
               subtitle: Text(
                 '${p.quantity} left · reorder level ${p.minStock}',
               ),

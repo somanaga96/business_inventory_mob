@@ -36,6 +36,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   firebase_core: ^5.1.0
   cloud_firestore: ^7.1.0
+  # ESC/POS thermal receipts via Bluetooth (BLE/RFCOMM), USB, or network.
+  thermal_printer_flutter: ^2.1.0
 
 dev_dependencies:
   flutter_test:

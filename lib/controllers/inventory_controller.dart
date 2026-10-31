@@ -11,6 +11,13 @@ class InventoryController {
   Stream<List<Product>> get products => _service.watchProducts();
   Stream<QuerySnapshot<Map<String, dynamic>>> get transactions =>
       _service.watchTransactions();
+  Stream<QuerySnapshot<Map<String, dynamic>>> transactionsForDate(DateTime date) =>
+      _service.watchTransactionsForDate(date);
+  Stream<QuerySnapshot<Map<String, dynamic>>> transactionsForRange(
+    DateTime from,
+    DateTime to,
+  ) => _service.watchTransactionsForRange(from, to);
+  Future<int> nextBillSequence(DateTime date) => _service.nextBillSequence(date);
   Future<void> addProduct({
     required String name,
     required String category,

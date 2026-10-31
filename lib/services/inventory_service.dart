@@ -18,6 +18,61 @@ class InventoryService {
       .limit(50)
       .snapshots();
 
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchTransactionsForDate(
+    DateTime date,
+  ) {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    return _firestore
+        .collection('transactions')
+        .where(
+          'transactionDate',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+        )
+        .where('transactionDate', isLessThan: Timestamp.fromDate(end))
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchTransactionsForRange(
+    DateTime from,
+    DateTime to,
+  ) {
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day + 1);
+    return _firestore
+        .collection('transactions')
+        .where('transactionDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('transactionDate', isLessThan: Timestamp.fromDate(end))
+        .snapshots();
+  }
+
+  Future<int> nextBillSequence(DateTime date) async {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    final snapshot = await _firestore
+        .collection('transactions')
+        .where(
+          'transactionDate',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+        )
+        .where('transactionDate', isLessThan: Timestamp.fromDate(end))
+        .get();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final prefix =
+        '${date.day.toString().padLeft(2, '0')}_${months[date.month - 1]}_${date.year}';
+    final pattern = RegExp('^${RegExp.escape(prefix)}_(\\d+)\$');
+    var highest = 0;
+    for (final doc in snapshot.docs) {
+      final match = pattern.firstMatch(doc.data()['note']?.toString() ?? '');
+      final sequence = int.tryParse(match?.group(1) ?? '') ?? 0;
+      if (sequence > highest) highest = sequence;
+    }
+    return highest + 1;
+  }
+
   Future<void> addProduct({
     required String name,
     required String category,
