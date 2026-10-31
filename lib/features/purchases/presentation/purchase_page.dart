@@ -1,11 +1,7 @@
 import '../../../app_exports.dart';
 
-class NewTransaction extends StatefulWidget {
-  const NewTransaction({
-    super.key,
-    required this.products,
-    required this.submit,
-  });
+class PurchasePage extends StatefulWidget {
+  const PurchasePage({super.key, required this.products, required this.submit});
   final List<Product> products;
   final Future<void> Function(
     Product,
@@ -19,10 +15,10 @@ class NewTransaction extends StatefulWidget {
   )
   submit;
   @override
-  State<NewTransaction> createState() => _NewTransactionState();
+  State<PurchasePage> createState() => _PurchasePageState();
 }
 
-class _NewTransactionState extends State<NewTransaction> {
+class _PurchasePageState extends State<PurchasePage> {
   Product? selected;
   String type = 'Purchase';
   final quantity = TextEditingController();
@@ -44,12 +40,20 @@ class _NewTransactionState extends State<NewTransaction> {
 
   Future<void> save() async {
     final amount = int.tryParse(quantity.text) ?? 0;
+    final buyPrice = double.tryParse(price.text);
     final currentProduct = selected == null
         ? null
         : widget.products.where((p) => p.id == selected!.id).firstOrNull;
-    if (currentProduct == null || amount <= 0) {
+    if (currentProduct == null ||
+        amount <= 0 ||
+        buyPrice == null ||
+        buyPrice <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a product and enter a quantity.')),
+        const SnackBar(
+          content: Text(
+            'Product, purchase quantity, and buy price are required.',
+          ),
+        ),
       );
       return;
     }
@@ -66,7 +70,7 @@ class _NewTransactionState extends State<NewTransaction> {
         currentProduct,
         amount,
         type,
-        double.tryParse(price.text) ?? currentProduct.cost,
+        buyPrice,
         party.text.trim(),
         city.text.trim(),
         note.text.trim(),
@@ -77,9 +81,8 @@ class _NewTransactionState extends State<NewTransaction> {
         note.clear();
         party.clear();
         city.clear();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Transaction recorded.')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Purchase recorded.')));
       }
     } finally {
       if (mounted) setState(() => saving = false);
@@ -161,7 +164,7 @@ class _NewTransactionState extends State<NewTransaction> {
                   controller: quantity,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'Quantity',
+                    labelText: 'Purchase quantity *',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -172,7 +175,7 @@ class _NewTransactionState extends State<NewTransaction> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Buy price per unit',
+                    labelText: 'Buy price per unit *',
                     hintText: selected == null
                         ? '0.00'
                         : selected!.cost.toStringAsFixed(2),
@@ -209,7 +212,7 @@ class _NewTransactionState extends State<NewTransaction> {
                   },
                   icon: const Icon(Icons.calendar_today_outlined),
                   label: Text(
-                    'Transaction date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
+                    'Purchase date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
                   ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),

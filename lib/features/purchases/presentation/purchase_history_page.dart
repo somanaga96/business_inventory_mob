@@ -1,19 +1,19 @@
 import '../../../app_exports.dart';
 
-class TransactionHistory extends StatefulWidget {
-  const TransactionHistory({super.key, required this.controller});
+class PurchaseHistoryPage extends StatefulWidget {
+  const PurchaseHistoryPage({super.key, required this.controller});
   final InventoryController controller;
   @override
-  State<TransactionHistory> createState() => _TransactionHistoryState();
+  State<PurchaseHistoryPage> createState() => _PurchaseHistoryPageState();
 }
 
-class _TransactionHistoryState extends State<TransactionHistory> {
-  String query = '', typeFilter = 'All types';
+class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
+  String query = '', typeFilter = 'All purchases';
   @override
   Widget build(
     BuildContext context,
   ) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: widget.controller.transactions,
+    stream: widget.controller.purchases,
     builder: (context, snapshot) {
       final allDocs = snapshot.data?.docs ?? [];
       final docs = allDocs.where((d) {
@@ -22,12 +22,12 @@ class _TransactionHistoryState extends State<TransactionHistory> {
             '${m['productName'] ?? ''} ${m['party'] ?? ''} ${m['note'] ?? ''}'
                 .toLowerCase();
         return text.contains(query.toLowerCase()) &&
-            (typeFilter == 'All types' || '${m['type']}' == typeFilter);
+            (typeFilter == 'All purchases' || '${m['type']}' == typeFilter);
       }).toList();
       return ResponsivePage(
         children: [
           const Text(
-            'Transaction history',
+            'Purchase history',
             style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
@@ -54,24 +54,14 @@ class _TransactionHistoryState extends State<TransactionHistory> {
                   DropdownButtonFormField<String>(
                     initialValue: typeFilter,
                     decoration: const InputDecoration(
-                      labelText: 'Transaction type',
+                      labelText: 'Showing',
                       border: OutlineInputBorder(),
                     ),
-                    items:
-                        const [
-                              'All types',
-                              'Purchase',
-                              'Sale',
-                              'Return',
-                              'Damage',
-                              'Adjustment',
-                            ]
-                            .map(
-                              (v) => DropdownMenuItem(value: v, child: Text(v)),
-                            )
-                            .toList(),
+                    items: const ['All purchases']
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
                     onChanged: (v) =>
-                        setState(() => typeFilter = v ?? 'All types'),
+                        setState(() => typeFilter = v ?? 'All purchases'),
                   ),
                 ],
               ),
@@ -89,9 +79,9 @@ class _TransactionHistoryState extends State<TransactionHistory> {
             const Card(
               child: ListTile(
                 leading: Icon(Icons.receipt_long_outlined),
-                title: Text('No transactions yet'),
+                title: Text('No purchases yet'),
                 subtitle: Text(
-                  'Record your first stock movement from the Transaction tab.',
+                  'Record your first stock movement from the Purchase tab.',
                 ),
               ),
             ),

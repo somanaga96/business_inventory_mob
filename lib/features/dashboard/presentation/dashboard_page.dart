@@ -64,7 +64,7 @@ class Dashboard extends StatelessWidget {
         Row(children: [
           Expanded(child: OutlinedButton.icon(onPressed: () => openTab(3), icon: const Icon(Icons.swap_horiz), label: const Text('Stock movement'))),
           const SizedBox(width: 10),
-          Expanded(child: OutlinedButton.icon(onPressed: () => openTab(4), icon: const Icon(Icons.history), label: const Text('Transactions'))),
+          Expanded(child: OutlinedButton.icon(onPressed: () => openTab(4), icon: const Icon(Icons.history), label: const Text('Purchase history'))),
         ]),
 
       ],

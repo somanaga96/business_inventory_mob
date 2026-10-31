@@ -18,6 +18,11 @@ class FirebaseInventoryDataSource {
       .limit(50)
       .snapshots();
 
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchPurchases() => _firestore
+      .collection('transactions')
+      .where('type', isEqualTo: 'Purchase')
+      .snapshots();
+
   Stream<QuerySnapshot<Map<String, dynamic>>> watchTransactionsForDate(
     DateTime date,
   ) {
@@ -213,7 +218,10 @@ class FirebaseInventoryDataSource {
       'quantity': quantity,
       'change': change,
       'type': type,
+      'recordType': type == 'Purchase' ? 'purchase' : 'inventory_transaction',
       'unitPrice': unitPrice,
+      if (type == 'Purchase') 'purchaseQuantity': quantity,
+      if (type == 'Purchase') 'buyPrice': unitPrice,
       'mrp': product.cost,
       'party': party,
       'city': city,

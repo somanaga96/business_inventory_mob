@@ -13,8 +13,8 @@ import 'features/inventory/domain/models/product.dart';
 import 'features/inventory/presentation/stock_page.dart';
 import 'features/products/presentation/products_page.dart';
 import 'features/reports/presentation/business_summary_page.dart';
-import 'features/transactions/presentation/new_transaction_page.dart';
-import 'features/transactions/presentation/transaction_history_page.dart';
+import 'features/purchases/presentation/purchase_history_page.dart';
+import 'features/purchases/presentation/purchase_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -116,8 +116,8 @@ class _InventoryHomeState extends State<InventoryHome> {
           remove: deleteProduct,
         ),
         Stock(products: products, adjust: adjust),
-        NewTransaction(products: products, submit: recordTransaction),
-        TransactionHistory(controller: controller),
+        PurchasePage(products: products, submit: recordTransaction),
+        PurchaseHistoryPage(controller: controller),
         Bills(
           products: products,
           submit: recordTransaction,
@@ -210,8 +210,8 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Overview',
                   'Products',
                   'Inventory',
-                  'Transactions',
-                  'Transaction history',
+                  'Purchase',
+                  'Purchase history',
                   'Bills',
                   'Bills history',
                   'Alerts',

@@ -13,6 +13,8 @@ class InventoryController {
   Stream<List<Product>> get products => _dataSource.watchProducts();
   Stream<QuerySnapshot<Map<String, dynamic>>> get transactions =>
       _dataSource.watchTransactions();
+  Stream<QuerySnapshot<Map<String, dynamic>>> get purchases =>
+      _dataSource.watchPurchases();
   Stream<QuerySnapshot<Map<String, dynamic>>> transactionsForDate(
     DateTime date,
   ) => _dataSource.watchTransactionsForDate(date);
