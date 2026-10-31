@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import 'controllers/inventory_controller.dart';
 import 'firebase/firebase_options.dart';
@@ -84,7 +85,7 @@ class _InventoryHomeState extends State<InventoryHome> {
         Stock(products: products, adjust: adjust),
         NewTransaction(products: products, submit: recordTransaction),
         TransactionHistory(controller: controller),
-        Bills(products: products, submit: recordTransaction),
+        Bills(products: products, submit: recordTransaction, controller: controller),
         BillsHistory(controller: controller),
         Alerts(products: products, update: editProduct),
       ];
@@ -896,9 +897,10 @@ class _NewTransactionState extends State<NewTransaction> {
 }
 
 class Bills extends StatefulWidget {
-  const Bills({super.key, required this.products, required this.submit});
+  const Bills({super.key, required this.products, required this.submit, required this.controller});
   final List<Product> products;
   final Future<void> Function(Product, int, String, double, String, String, String, DateTime) submit;
+  final InventoryController controller;
   @override
   State<Bills> createState() => _BillsState();
 }
@@ -913,6 +915,7 @@ class _BillsState extends State<Bills> {
   final prices = <String, double>{};
   int billSequence = 1;
   late String billNumber;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? billSubscription;
   static const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   String newBillNumber() {
     final now = DateTime.now();
@@ -922,6 +925,20 @@ class _BillsState extends State<Bills> {
   void initState() {
     super.initState();
     billNumber = newBillNumber();
+    billSubscription = widget.controller.transactions.listen((snapshot) {
+      final today = DateTime.now();
+      var highest = 0;
+      for (final doc in snapshot.docs) {
+        final parts = (doc.data()['note']?.toString() ?? '').split('_');
+        final rawDate = doc.data()['transactionDate'];
+        final date = rawDate is Timestamp ? rawDate.toDate() : null;
+        if (date != null && date.year == today.year && date.month == today.month && date.day == today.day && parts.length == 4) {
+          final number = int.tryParse(parts.last) ?? 0;
+          if (number > highest) highest = number;
+        }
+      }
+      if (mounted && highest + 1 > billSequence) setState(() { billSequence = highest + 1; billNumber = newBillNumber(); });
+    });
   }
   @override
   void dispose() {
@@ -930,6 +947,7 @@ class _BillsState extends State<Bills> {
     customer.dispose();
     city.dispose();
     super.dispose();
+    billSubscription?.cancel();
   }
   Product? find(String id) => widget.products.where((p) => p.id == id).firstOrNull;
   double get total => cart.entries.fold(0, (totalValue, e) => totalValue + (prices[e.key] ?? find(e.key)?.cost ?? 0) * e.value);
@@ -1211,9 +1229,16 @@ class _BillsHistoryState extends State<BillsHistory> {
         if (snapshot.hasData && grouped.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No bills for this date'), subtitle: Text('Completed bills will appear here.'))),
         ...grouped.entries.map((entry) {
           final docs = entry.value;
+          final firstData = docs.first.data();
+          final customerName = '${firstData['party'] ?? ''}'.trim();
+          final villageName = '${firstData['city'] ?? ''}'.trim();
+          final customerDetails = [
+            if (customerName.isNotEmpty) 'Customer: $customerName',
+            if (villageName.isNotEmpty) 'City/Village: $villageName',
+          ].join('  ·  ');
           double total = 0;
           for (final doc in docs) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; total += qty * price; }
-          return Card(elevation: 0, margin: const EdgeInsets.only(bottom: 12), child: ExpansionTile(title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${docs.length} item(s)'), trailing: Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)), children: docs.map((doc) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; return ListTile(title: Text('${data['productName'] ?? 'Product'}'), subtitle: Text('${qty.toInt()} × ₹${price.toStringAsFixed(2)}'), trailing: Text('₹${(qty * price).toStringAsFixed(2)}')); }).toList()));
+          return Card(elevation: 0, margin: const EdgeInsets.only(bottom: 12), child: ExpansionTile(title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${customerDetails.isEmpty ? 'Customer not specified' : customerDetails}\n${docs.length} item(s)'), trailing: Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)), children: docs.map((doc) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; final mrp = (data['mrp'] as num?)?.toDouble() ?? price; return ListTile(title: Text('${data['productName'] ?? 'Product'}'), subtitle: Text('Order ID: ${entry.key}\nQty: ${qty.toInt()}  ·  MRP: ₹${mrp.toStringAsFixed(2)}  ·  Price: ₹${price.toStringAsFixed(2)}'), isThreeLine: true, trailing: Text('₹${(qty * price).toStringAsFixed(2)}')); }).toList()));
         }),
       ]);
     },

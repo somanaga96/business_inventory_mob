@@ -125,6 +125,7 @@ class InventoryService {
       'change': change,
       'type': type,
       'unitPrice': unitPrice,
+      'mrp': product.cost,
       'party': party,
       'city': city,
       'note': note,
