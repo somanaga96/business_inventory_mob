@@ -5,10 +5,14 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   cloud_firestore
   firebase_core
+  printing
+  share_plus
   thermal_printer_flutter
+  url_launcher_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

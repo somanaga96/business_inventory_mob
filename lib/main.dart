@@ -1,7 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:csv/csv.dart';
+import 'package:excel_plus/excel_plus.dart' as excel;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'controllers/inventory_controller.dart';
 import 'firebase/firebase_options.dart';
@@ -86,11 +95,20 @@ class _InventoryHomeState extends State<InventoryHome> {
           controller: controller,
           openTab: (index) => setState(() => tab = index),
         ),
-        Products(products: products, add: addProduct, edit: editProduct, remove: deleteProduct),
+        Products(
+          products: products,
+          add: addProduct,
+          edit: editProduct,
+          remove: deleteProduct,
+        ),
         Stock(products: products, adjust: adjust),
         NewTransaction(products: products, submit: recordTransaction),
         TransactionHistory(controller: controller),
-        Bills(products: products, submit: recordTransaction, controller: controller),
+        Bills(
+          products: products,
+          submit: recordTransaction,
+          controller: controller,
+        ),
         BillsHistory(controller: controller),
         Alerts(products: products, update: editProduct, remove: deleteProduct),
         BusinessSummary(controller: controller),
@@ -205,12 +223,12 @@ class _InventoryHomeState extends State<InventoryHome> {
                 width: billButtonWidth,
                 height: billButtonHeight,
                 child: FloatingActionButton.extended(
-            tooltip: 'Add bill',
-            onPressed: openNewBill,
-            backgroundColor: primary,
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.receipt_long_outlined),
-            label: const Text('Add bill'),
+                  tooltip: 'Add bill',
+                  onPressed: openNewBill,
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: const Text('Add bill'),
                 ),
               ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -334,19 +352,63 @@ class _InventoryHomeState extends State<InventoryHome> {
     final cost = TextEditingController(text: p.cost.toString());
     final threshold = TextEditingController(text: p.minStock.toString());
     final image = TextEditingController(text: p.imageUrl ?? '');
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: const Text('Edit product'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        field(name, 'Product name'), field(category, 'Category'), field(image, 'Image URL'),
-        field(cost, 'Cost', true), field(threshold, 'Low stock level', true),
-      ])),
-      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Save'))],
-    ));
-    if (ok == true) await controller.updateProduct(product: p, name: name.text.trim(), category: category.text.trim(), cost: double.tryParse(cost.text) ?? p.cost, threshold: int.tryParse(threshold.text) ?? p.minStock, imageUrl: image.text.trim());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Edit product'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              field(name, 'Product name'),
+              field(category, 'Category'),
+              field(image, 'Image URL'),
+              field(cost, 'Cost', true),
+              field(threshold, 'Low stock level', true),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true)
+      await controller.updateProduct(
+        product: p,
+        name: name.text.trim(),
+        category: category.text.trim(),
+        cost: double.tryParse(cost.text) ?? p.cost,
+        threshold: int.tryParse(threshold.text) ?? p.minStock,
+        imageUrl: image.text.trim(),
+      );
   }
 
   Future<void> deleteProduct(Product p) async {
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Delete product?'), content: Text('Remove ${p.name}?'), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete'))]));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Delete product?'),
+        content: Text('Remove ${p.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
     if (ok == true) await controller.deleteProduct(p);
   }
 }
@@ -458,13 +520,26 @@ class Dashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final value = products.fold(0.0, (total, product) => total + product.cost * product.quantity);
+    final value = products.fold(
+      0.0,
+      (total, product) => total + product.cost * product.quantity,
+    );
     final inStock = products.where((product) => product.quantity > 0).length;
     final lowStock = products.where((product) => product.low).length;
     return ResponsivePage(
       children: [
-        const Text('Overview', style: TextStyle(fontSize: 31, fontWeight: FontWeight.w800, color: ink)),
-        Text('${products.length} products', style: const TextStyle(color: Color(0xFF8493AD), fontSize: 16)),
+        const Text(
+          'Overview',
+          style: TextStyle(
+            fontSize: 31,
+            fontWeight: FontWeight.w800,
+            color: ink,
+          ),
+        ),
+        Text(
+          '${products.length} products',
+          style: const TextStyle(color: Color(0xFF8493AD), fontSize: 16),
+        ),
         const SizedBox(height: 24),
         BillsOverviewCard(controller: controller, openBills: () => openTab(6)),
         const SizedBox(height: 14),
@@ -476,13 +551,28 @@ class Dashboard extends StatelessWidget {
           crossAxisSpacing: 12,
           childAspectRatio: 1.55,
           children: [
-            Metric('Total products', '${products.length}', Icons.inventory_2_outlined, primary, onTap: () => openTab(1)),
-            InventorySummaryMetric(
-              value: value,
+            Metric(
+              'Total products',
+              '${products.length}',
+              Icons.inventory_2_outlined,
+              primary,
+              onTap: () => openTab(1),
+            ),
+            InventorySummaryMetric(value: value, onTap: () => openTab(2)),
+            Metric(
+              'Products in stock',
+              '$inStock',
+              Icons.check_circle_outline,
+              const Color(0xFF22B573),
               onTap: () => openTab(2),
             ),
-            Metric('Products in stock', '$inStock', Icons.check_circle_outline, const Color(0xFF22B573), onTap: () => openTab(2)),
-            Metric('Stock alerts', '$lowStock', Icons.warning_amber_rounded, const Color(0xFFF59E0B), onTap: () => openTab(7)),
+            Metric(
+              'Stock alerts',
+              '$lowStock',
+              Icons.warning_amber_rounded,
+              const Color(0xFFF59E0B),
+              onTap: () => openTab(7),
+            ),
           ],
         ),
       ],
@@ -491,7 +581,11 @@ class Dashboard extends StatelessWidget {
 }
 
 class BillsOverviewCard extends StatefulWidget {
-  const BillsOverviewCard({super.key, required this.controller, required this.openBills});
+  const BillsOverviewCard({
+    super.key,
+    required this.controller,
+    required this.openBills,
+  });
 
   final InventoryController controller;
   final VoidCallback openBills;
@@ -507,81 +601,105 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   @override
-  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: widget.controller.transactionsForDate(selectedDate),
-    builder: (context, snapshot) {
-      final billPattern = RegExp(r'^\d{2}_[A-Z][a-z]{2}_\d{4}_\d+$');
-      final bills = <String>{};
-      var totalValue = 0.0;
-      for (final doc in snapshot.data?.docs ?? []) {
-        final data = doc.data();
-        final billNumber = data['note']?.toString() ?? '';
-        if (!billPattern.hasMatch(billNumber)) continue;
-        bills.add(billNumber);
-        final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
-        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
-        totalValue += quantity * price;
-      }
-      return Card(
-        elevation: 0,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: primary.withValues(alpha: .22)),
-        ),
-        child: InkWell(
-          onTap: widget.openBills,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: primary.withValues(alpha: .10),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.receipt_long_outlined, color: primary),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text('Bills summary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                    ),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: primary),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (date != null) setState(() => selectedDate = date);
-                  },
-                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                  label: Text(_dateLabel(selectedDate)),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(child: _BillMetric(label: 'Bills', value: '${bills.length}')),
-                    const SizedBox(width: 12),
-                    Expanded(child: _BillMetric(label: 'Total value', value: 'Rs ${totalValue.toStringAsFixed(2)}')),
-                  ],
-                ),
-              ],
+  Widget build(BuildContext context) =>
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: widget.controller.transactionsForDate(selectedDate),
+        builder: (context, snapshot) {
+          final billPattern = RegExp(r'^\d{2}_[A-Z][a-z]{2}_\d{4}_\d+$');
+          final bills = <String>{};
+          var totalValue = 0.0;
+          for (final doc in snapshot.data?.docs ?? []) {
+            final data = doc.data();
+            final billNumber = data['note']?.toString() ?? '';
+            if (!billPattern.hasMatch(billNumber)) continue;
+            bills.add(billNumber);
+            final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+            final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+            totalValue += quantity * price;
+          }
+          return Card(
+            elevation: 0,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: primary.withValues(alpha: .22)),
             ),
-          ),
-        ),
+            child: InkWell(
+              onTap: widget.openBills,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: primary.withValues(alpha: .10),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.receipt_long_outlined,
+                            color: primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Bills summary',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 16,
+                          color: primary,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (date != null) setState(() => selectedDate = date);
+                      },
+                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                      label: Text(_dateLabel(selectedDate)),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _BillMetric(
+                            label: 'Bills',
+                            value: '${bills.length}',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _BillMetric(
+                            label: 'Total value',
+                            value: 'Rs ${totalValue.toStringAsFixed(2)}',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       );
-    },
-  );
 }
 
 class _BillMetric extends StatelessWidget {
@@ -600,8 +718,14 @@ class _BillMetric extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF7C8AA3))),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF7C8AA3)),
+        ),
       ],
     ),
   );
@@ -651,8 +775,17 @@ class DashboardCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                      Text(subtitle, style: const TextStyle(color: Color(0xFF7C8AA3))),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(color: Color(0xFF7C8AA3)),
+                      ),
                     ],
                   ),
                 ),
@@ -681,7 +814,10 @@ class DashboardPill extends StatelessWidget {
       color: color.withValues(alpha: .10),
       borderRadius: BorderRadius.circular(20),
     ),
-    child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontWeight: FontWeight.w700),
+    ),
   );
 }
 
@@ -713,8 +849,18 @@ class InventorySummaryMetric extends StatelessWidget {
           children: [
             const Icon(Icons.account_balance_wallet_outlined, color: primary),
             const Spacer(),
-            Text('Rs ${value.toStringAsFixed(0)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: ink)),
-            const Text('Inventory', style: TextStyle(fontSize: 12, color: Color(0xFF7C8AA3))),
+            Text(
+              'Rs ${value.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: ink,
+              ),
+            ),
+            const Text(
+              'Inventory',
+              style: TextStyle(fontSize: 12, color: Color(0xFF7C8AA3)),
+            ),
           ],
         ),
       ),
@@ -775,7 +921,13 @@ class Metric extends StatelessWidget {
 }
 
 class Products extends StatelessWidget {
-  const Products({super.key, required this.products, required this.add, required this.edit, required this.remove});
+  const Products({
+    super.key,
+    required this.products,
+    required this.add,
+    required this.edit,
+    required this.remove,
+  });
   final List<Product> products;
   final VoidCallback add;
   final Future<void> Function(Product) edit;
@@ -798,7 +950,24 @@ class Products extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 10),
-      ...products.map((p) => ProductTile(product: p, actions: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined)), IconButton(onPressed: () => remove(p), icon: const Icon(Icons.delete_outline, color: Colors.red))]))),
+      ...products.map(
+        (p) => ProductTile(
+          product: p,
+          actions: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () => edit(p),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+              IconButton(
+                onPressed: () => remove(p),
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+              ),
+            ],
+          ),
+        ),
+      ),
     ],
   );
 }
@@ -843,25 +1012,30 @@ class ProductTile extends StatelessWidget {
       subtitle: Text(
         '${product.category} · ₹${product.cost.toStringAsFixed(2)} avg. cost',
       ),
-      trailing: actions ?? Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '${product.quantity}',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+      trailing:
+          actions ??
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${product.quantity}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              Text(
+                product.low ? 'low stock' : 'in stock',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: product.low
+                      ? const Color(0xFFC17700)
+                      : const Color(0xFF168B57),
+                ),
+              ),
+            ],
           ),
-          Text(
-            product.low ? 'low stock' : 'in stock',
-            style: TextStyle(
-              fontSize: 12,
-              color: product.low
-                  ? const Color(0xFFC17700)
-                  : const Color(0xFF168B57),
-            ),
-          ),
-        ],
-      ),
     ),
   );
 }
@@ -891,72 +1065,83 @@ class Stock extends StatelessWidget {
             subtitle: Text('Products with zero stock are hidden here.'),
           ),
         ),
-      ...products.where((p) => p.quantity > 0).map(
-        (p) => Card(
-          elevation: 0,
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: primary.withValues(alpha: .10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: p.imageUrl == null || p.imageUrl!.isEmpty
-                      ? const Icon(Icons.inventory_2_outlined, color: primary)
-                      : Image.network(p.imageUrl!, fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, color: primary)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        p.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        'Price: Rs ${p.cost.toStringAsFixed(2)}',
-                        style: const TextStyle(color: Color(0xFF71809A)),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+      ...products
+          .where((p) => p.quantity > 0)
+          .map(
+            (p) => Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
                   children: [
-                    Text(
-                      '${p.quantity}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
+                    Container(
+                      width: 46,
+                      height: 46,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: primary.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: p.imageUrl == null || p.imageUrl!.isEmpty
+                          ? const Icon(
+                              Icons.inventory_2_outlined,
+                              color: primary,
+                            )
+                          : Image.network(
+                              p.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const Icon(
+                                Icons.inventory_2_outlined,
+                                color: primary,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            'Price: Rs ${p.cost.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Color(0xFF71809A)),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      'units available',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: p.low
-                            ? const Color(0xFFC17700)
-                            : const Color(0xFF71809A),
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${p.quantity}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'units available',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: p.low
+                                ? const Color(0xFFC17700)
+                                : const Color(0xFF71809A),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
     ],
   );
 }
@@ -1053,171 +1238,186 @@ class _NewTransactionState extends State<NewTransaction> {
         ? null
         : widget.products.where((p) => p.id == selected!.id).firstOrNull;
     return ResponsivePage(
-    children: [
-      const Text(
-        'Purchase',
-        style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
-      ),
-      const SizedBox(height: 24),
-      Card(
-        elevation: 0,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DropdownButtonFormField<Product>(
-                initialValue: selectedValue,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Product',
-                  border: OutlineInputBorder(),
-                ),
-                items: widget.products
-                    .map(
-                      (p) => DropdownMenuItem(
-                        value: p,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                color: primary.withValues(alpha: .10),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: p.imageUrl == null || p.imageUrl!.isEmpty
-                                  ? const Icon(
-                                      Icons.inventory_2_outlined,
-                                      color: primary,
-                                      size: 20,
-                                    )
-                                  : Image.network(
-                                      p.imageUrl!,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => const Icon(
+      children: [
+        const Text(
+          'Purchase',
+          style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 24),
+        Card(
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<Product>(
+                  initialValue: selectedValue,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Product',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: widget.products
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  color: primary.withValues(alpha: .10),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: p.imageUrl == null || p.imageUrl!.isEmpty
+                                    ? const Icon(
                                         Icons.inventory_2_outlined,
                                         color: primary,
                                         size: 20,
+                                      )
+                                    : Image.network(
+                                        p.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const Icon(
+                                          Icons.inventory_2_outlined,
+                                          color: primary,
+                                          size: 20,
+                                        ),
                                       ),
-                                    ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '${p.name} (${p.quantity} available)',
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (p) => setState(() => selected = p),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: quantity,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantity',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: price,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Buy price per unit',
-                  hintText: selected == null
-                      ? '0.00'
-                      : selected!.cost.toStringAsFixed(2),
-                  prefixText: '₹ ',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: party,
-                decoration: const InputDecoration(
-                  labelText: 'Supplier / Party (optional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: city,
-                decoration: const InputDecoration(
-                  labelText: 'City / Village (optional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2100),
-                    initialDate: date,
-                  );
-                  if (picked != null) setState(() => date = picked);
-                },
-                icon: const Icon(Icons.calendar_today_outlined),
-                label: Text(
-                  'Transaction date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: note,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Note (optional)',
-                  hintText: 'Supplier, sale, adjustment…',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: saving ? null : save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: primary,
-                  minimumSize: const Size.fromHeight(50),
-                ),
-                icon: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  '${p.name} (${p.quantity} available)',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       )
-                    : const Icon(Icons.check),
-                label: Text(saving ? 'Saving…' : 'Record $type'),
-              ),
-            ],
+                      .toList(),
+                  onChanged: (p) => setState(() => selected = p),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: quantity,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Quantity',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: price,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Buy price per unit',
+                    hintText: selected == null
+                        ? '0.00'
+                        : selected!.cost.toStringAsFixed(2),
+                    prefixText: '₹ ',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: party,
+                  decoration: const InputDecoration(
+                    labelText: 'Supplier / Party (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: city,
+                  decoration: const InputDecoration(
+                    labelText: 'City / Village (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                      initialDate: date,
+                    );
+                    if (picked != null) setState(() => date = picked);
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  label: Text(
+                    'Transaction date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: note,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    hintText: 'Supplier, sale, adjustment…',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: saving ? null : save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primary,
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.check),
+                  label: Text(saving ? 'Saving…' : 'Record $type'),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    ],
+      ],
     );
   }
 }
 
 class Bills extends StatefulWidget {
-  const Bills({super.key, required this.products, required this.submit, required this.controller});
+  const Bills({
+    super.key,
+    required this.products,
+    required this.submit,
+    required this.controller,
+  });
   final List<Product> products;
-  final Future<void> Function(Product, int, String, double, String, String, String, DateTime) submit;
+  final Future<void> Function(
+    Product,
+    int,
+    String,
+    double,
+    String,
+    String,
+    String,
+    DateTime,
+  )
+  submit;
   final InventoryController controller;
   @override
   State<Bills> createState() => _BillsState();
@@ -1235,7 +1435,20 @@ class _BillsState extends State<Bills> {
   late String billNumber;
   bool billNumberReady = false;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? billSubscription;
-  static const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  static const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
 
   String datePrefix(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}_${months[date.month - 1]}_${date.year}';
@@ -1279,6 +1492,7 @@ class _BillsState extends State<Bills> {
       billNumberReady = true;
     });
   }
+
   @override
   void dispose() {
     quantity.dispose();
@@ -1288,12 +1502,19 @@ class _BillsState extends State<Bills> {
     super.dispose();
     billSubscription?.cancel();
   }
-  Product? find(String id) => widget.products.where((p) => p.id == id).firstOrNull;
-  double get total => cart.entries.fold(0, (totalValue, e) => totalValue + (prices[e.key] ?? find(e.key)?.cost ?? 0) * e.value);
+
+  Product? find(String id) =>
+      widget.products.where((p) => p.id == id).firstOrNull;
+  double get total => cart.entries.fold(
+    0,
+    (totalValue, e) =>
+        totalValue + (prices[e.key] ?? find(e.key)?.cost ?? 0) * e.value,
+  );
   Product? get selectedProduct {
     final selected = product == null ? null : find(product!.id);
     return selected?.quantity == 0 ? null : selected;
   }
+
   void add() {
     final qty = int.tryParse(quantity.text) ?? 0;
     if (product == null || qty <= 0) return;
@@ -1307,18 +1528,52 @@ class _BillsState extends State<Bills> {
     quantity.text = '1';
     price.clear();
   }
+
   Future<void> complete() async {
     if (cart.isEmpty) return;
     for (final entry in cart.entries) {
       final p = find(entry.key);
-      if (p != null) await widget.submit(p, entry.value, 'Sale', prices[entry.key] ?? p.cost, customer.text.trim(), city.text.trim(), billNumber, DateTime.now());
+      if (p != null)
+        await widget.submit(
+          p,
+          entry.value,
+          'Sale',
+          prices[entry.key] ?? p.cost,
+          customer.text.trim(),
+          city.text.trim(),
+          billNumber,
+          DateTime.now(),
+        );
     }
     if (mounted) {
-      await showDialog(context: context, builder: (c) => AlertDialog(
-        title: const Text('Bill generated'),
-        content: Text('Order: $billNumber\nItems: ${cart.length}\nTotal: ₹${total.toStringAsFixed(2)}\n\nConnect a Bluetooth thermal printer in the device settings, then use Print bill to print this receipt.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')), FilledButton(onPressed: () { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Thermal printing requires a Bluetooth printer plugin configured for this device.'))); }, child: const Text('Print bill'))],
-      ));
+      await showDialog(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Bill generated'),
+          content: Text(
+            'Order: $billNumber\nItems: ${cart.length}\nTotal: ₹${total.toStringAsFixed(2)}\n\nConnect a Bluetooth thermal printer in the device settings, then use Print bill to print this receipt.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(c);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Thermal printing requires a Bluetooth printer plugin configured for this device.',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Print bill'),
+            ),
+          ],
+        ),
+      );
       setState(() {
         cart.clear();
         prices.clear();
@@ -1332,33 +1587,212 @@ class _BillsState extends State<Bills> {
       });
     }
   }
-  Future<void> printBill() async => showDialog(context: context, builder: (c) => AlertDialog(title: const Text('Print bill'), content: Text('Order $billNumber\nTotal ₹${total.toStringAsFixed(2)}'), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect a Bluetooth thermal printer to print this bill.'))); }, child: const Text('Print'))]));
+
+  Future<void> printBill() async => showDialog(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Print bill'),
+      content: Text('Order $billNumber\nTotal ₹${total.toStringAsFixed(2)}'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(c),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(c);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Connect a Bluetooth thermal printer to print this bill.',
+                ),
+              ),
+            );
+          },
+          child: const Text('Print'),
+        ),
+      ],
+    ),
+  );
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final billNumberWidth = screenWidth * .28;
     final quantityWidth = screenWidth * .18;
-    return ResponsivePage(children: [
-    const Text('Bills', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
-    const SizedBox(height: 6),
-    const Text('Add multiple goods to one sale and generate a cumulative bill.', style: TextStyle(color: Color(0xFF8493AD))),
-    const SizedBox(height: 18),
-    Row(children: [Expanded(child: TextField(controller: customer, decoration: const InputDecoration(labelText: 'Shop / customer name', border: OutlineInputBorder()))), const SizedBox(width: 10), SizedBox(width: billNumberWidth, child: InputDecorator(decoration: const InputDecoration(labelText: 'Bill no.', border: OutlineInputBorder()), child: Text(billNumber, overflow: TextOverflow.ellipsis))) ]),
-    const SizedBox(height: 14),
-    TextField(controller: city, decoration: const InputDecoration(labelText: 'City / Village', border: OutlineInputBorder())),
-    const SizedBox(height: 14),
-    Row(children: [Expanded(child: DropdownButtonFormField<Product>(initialValue: selectedProduct, isExpanded: true, decoration: const InputDecoration(labelText: 'Product', border: OutlineInputBorder()), items: widget.products.where((p) => p.quantity > 0).map((p) => DropdownMenuItem(value: p, child: Row(children: [Container(width: 34, height: 34, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(8)), child: p.imageUrl == null || p.imageUrl!.isEmpty ? const Icon(Icons.inventory_2_outlined, color: primary, size: 19) : Image.network(p.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, color: primary, size: 19))), const SizedBox(width: 10), Expanded(child: Text('${p.name} (${p.quantity})', overflow: TextOverflow.ellipsis))]))).toList(), onChanged: (v) => setState(() => product = v))), const SizedBox(width: 10), SizedBox(width: quantityWidth, child: TextField(controller: quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', border: OutlineInputBorder()))) ]),
-    const SizedBox(height: 10),
-    TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Sale price per unit', hintText: selectedProduct == null ? 'Enter price' : selectedProduct!.cost.toStringAsFixed(2), prefixText: '₹ ', border: const OutlineInputBorder())),
-    const SizedBox(height: 10),
-    FilledButton.icon(onPressed: add, icon: const Icon(Icons.add), label: const Text('Add item')),
-    const SizedBox(height: 14),
-    ...cart.entries.map((e) { final p = find(e.key)!; final salePrice = prices[e.key] ?? p.cost; return ListTile(title: Text(p.name), subtitle: Text('${e.value} × ₹${salePrice.toStringAsFixed(2)}'), trailing: Text('₹${(e.value * salePrice).toStringAsFixed(2)}')); }),
-    const Divider(),
-    Align(alignment: Alignment.centerRight, child: Text('Total ₹${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
-    const SizedBox(height: 12),
-    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: cart.isEmpty || !billNumberReady ? null : printBill, icon: const Icon(Icons.print_outlined), label: const Text('Print bill'))), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: cart.isEmpty || !billNumberReady ? null : complete, icon: const Icon(Icons.receipt_long), label: const Text('Complete sale')))]),
-    ]);
+    return ResponsivePage(
+      children: [
+        const Text(
+          'Bills',
+          style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Add multiple goods to one sale and generate a cumulative bill.',
+          style: TextStyle(color: Color(0xFF8493AD)),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: customer,
+                decoration: const InputDecoration(
+                  labelText: 'Shop / customer name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: billNumberWidth,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Bill no.',
+                  border: OutlineInputBorder(),
+                ),
+                child: Text(billNumber, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: city,
+          decoration: const InputDecoration(
+            labelText: 'City / Village',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<Product>(
+                initialValue: selectedProduct,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Product',
+                  border: OutlineInputBorder(),
+                ),
+                items: widget.products
+                    .where((p) => p.quantity > 0)
+                    .map(
+                      (p) => DropdownMenuItem(
+                        value: p,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                color: primary.withValues(alpha: .1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: p.imageUrl == null || p.imageUrl!.isEmpty
+                                  ? const Icon(
+                                      Icons.inventory_2_outlined,
+                                      color: primary,
+                                      size: 19,
+                                    )
+                                  : Image.network(
+                                      p.imageUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.inventory_2_outlined,
+                                        color: primary,
+                                        size: 19,
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '${p.name} (${p.quantity})',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => product = v),
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: quantityWidth,
+              child: TextField(
+                controller: quantity,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Qty',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: price,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Sale price per unit',
+            hintText: selectedProduct == null
+                ? 'Enter price'
+                : selectedProduct!.cost.toStringAsFixed(2),
+            prefixText: '₹ ',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: add,
+          icon: const Icon(Icons.add),
+          label: const Text('Add item'),
+        ),
+        const SizedBox(height: 14),
+        ...cart.entries.map((e) {
+          final p = find(e.key)!;
+          final salePrice = prices[e.key] ?? p.cost;
+          return ListTile(
+            title: Text(p.name),
+            subtitle: Text('${e.value} × ₹${salePrice.toStringAsFixed(2)}'),
+            trailing: Text('₹${(e.value * salePrice).toStringAsFixed(2)}'),
+          );
+        }),
+        const Divider(),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            'Total ₹${total.toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: cart.isEmpty || !billNumberReady ? null : printBill,
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Print bill'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: cart.isEmpty || !billNumberReady ? null : complete,
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('Complete sale'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -1531,22 +1965,474 @@ class BillsHistory extends StatefulWidget {
 
 class _BillsHistoryState extends State<BillsHistory> {
   DateTime selectedDate = DateTime.now();
-  bool sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
-  String dateLabel(DateTime d) => '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
-  void showExportOptions(BuildContext context) => showModalBottomSheet<void>(
+  bool sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+  String dateLabel(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
+
+  List<List<dynamic>> exportRows(
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) {
+    final rows = <List<dynamic>>[
+      [
+        'Bill number',
+        'Customer',
+        'City/Village',
+        'Product',
+        'Quantity',
+        'MRP',
+        'Unit price',
+        'Item total',
+      ],
+    ];
+    for (final entry in grouped.entries) {
+      final docs = entry.value;
+      final firstData = docs.first.data();
+      final customer = '${firstData['party'] ?? ''}'.trim();
+      final city = '${firstData['city'] ?? ''}'.trim();
+      for (final doc in docs) {
+        final data = doc.data();
+        final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+        final mrp = (data['mrp'] as num?)?.toDouble() ?? price;
+        rows.add([
+          entry.key,
+          customer.isEmpty ? 'Not specified' : customer,
+          city.isEmpty ? 'Not specified' : city,
+          '${data['productName'] ?? 'Product'}',
+          quantity.toInt(),
+          mrp,
+          price,
+          quantity * price,
+        ]);
+      }
+    }
+    return rows;
+  }
+
+  List<List<dynamic>> billTotalRows(
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) {
+    final rows = <List<dynamic>>[
+      [
+        'Bill number',
+        'Customer',
+        'City/Village',
+        'Items',
+        'Quantity',
+        'Bill total',
+      ],
+    ];
+    for (final entry in grouped.entries) {
+      final docs = entry.value;
+      final firstData = docs.first.data();
+      final customer = '${firstData['party'] ?? ''}'.trim();
+      final city = '${firstData['city'] ?? ''}'.trim();
+      var quantity = 0;
+      var total = 0.0;
+      for (final doc in docs) {
+        final data = doc.data();
+        final itemQuantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+        quantity += itemQuantity.toInt();
+        total += itemQuantity * price;
+      }
+      rows.add([
+        entry.key,
+        customer.isEmpty ? 'Not specified' : customer,
+        city.isEmpty ? 'Not specified' : city,
+        docs.length,
+        quantity,
+        total,
+      ]);
+    }
+    return rows;
+  }
+
+  Future<void> shareExport(
+    List<int> bytes, {
+    required String filename,
+    required String mimeType,
+  }) => SharePlus.instance.share(
+    ShareParams(
+      files: [XFile.fromData(Uint8List.fromList(bytes), mimeType: mimeType)],
+      fileNameOverrides: [filename],
+    ),
+  );
+
+  Future<void> exportCsv(
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) async {
+    final content = csv.encode(exportRows(grouped));
+    await shareExport(
+      utf8.encode(content),
+      filename: 'bills_${dateLabel(selectedDate)}.csv',
+      mimeType: 'text/csv',
+    );
+  }
+
+  Future<void> exportExcel(
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) async {
+    final workbook = excel.Excel.createExcel();
+    final sheet = workbook['Bills summary'];
+    for (final row in exportRows(grouped)) {
+      sheet.appendRow(
+        row.map((value) {
+          if (value is int) return excel.IntCellValue(value);
+          if (value is double) return excel.DoubleCellValue(value);
+          return excel.TextCellValue('$value');
+        }).toList(),
+      );
+    }
+    final totalsSheet = workbook['Bill totals'];
+    for (final row in billTotalRows(grouped)) {
+      totalsSheet.appendRow(
+        row.map((value) {
+          if (value is int) return excel.IntCellValue(value);
+          if (value is double) return excel.DoubleCellValue(value);
+          return excel.TextCellValue('$value');
+        }).toList(),
+      );
+    }
+    final bytes = workbook.encode();
+    if (bytes == null) throw StateError('Could not create the Excel file.');
+    await shareExport(
+      bytes,
+      filename: 'bills_${dateLabel(selectedDate)}.xlsx',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  Future<void> exportPdf(
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) async {
+    final document = pw.Document();
+    double billTotal(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) =>
+        docs.fold(0.0, (total, doc) {
+          final data = doc.data();
+          final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+          final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+          return total + quantity * price;
+        });
+    final totalSales = grouped.values.fold(
+      0.0,
+      (total, docs) => total + billTotal(docs),
+    );
+    final itemsSold = grouped.values.fold<int>(
+      0,
+      (total, docs) =>
+          total +
+          docs.fold<int>(
+            0,
+            (runningTotal, doc) =>
+                runningTotal + ((doc.data()['quantity'] as num?)?.toInt() ?? 0),
+          ),
+    );
+    final averageBill = grouped.isEmpty ? 0.0 : totalSales / grouped.length;
+    final itemRows = <List<dynamic>>[];
+    for (final entry in grouped.entries) {
+      final docs = entry.value;
+      final firstData = docs.first.data();
+      final customer = '${firstData['party'] ?? ''}'.trim();
+      final city = '${firstData['city'] ?? ''}'.trim();
+      final total = billTotal(docs);
+      for (var index = 0; index < docs.length; index++) {
+        final data = docs[index].data();
+        final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+        final firstItem = index == 0;
+        itemRows.add([
+          firstItem ? entry.key : '',
+          firstItem ? (customer.isEmpty ? 'Not specified' : customer) : '',
+          firstItem ? (city.isEmpty ? 'Not specified' : city) : '',
+          '${data['productName'] ?? 'Product'}',
+          quantity.toInt(),
+          'Rs ${price.toStringAsFixed(2)}',
+          'Rs ${(quantity * price).toStringAsFixed(2)}',
+          firstItem ? 'Rs ${total.toStringAsFixed(2)}' : '',
+        ]);
+      }
+    }
+
+    pw.Widget tableCell(
+      String value, {
+      bool header = false,
+      pw.Alignment alignment = pw.Alignment.centerLeft,
+    }) => pw.Container(
+      alignment: alignment,
+      padding: const pw.EdgeInsets.all(6),
+      color: header ? PdfColors.blueGrey800 : null,
+      child: pw.Text(
+        value,
+        style: pw.TextStyle(
+          color: header ? PdfColors.white : PdfColors.black,
+          fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
+          fontSize: 8,
+        ),
+      ),
+    );
+
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(28),
+        footer: (context) => pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            'Page ${context.pageNumber} of ${context.pagesCount}',
+            style: const pw.TextStyle(fontSize: 8),
+          ),
+        ),
+        build: (_) => [
+          pw.Text(
+            'Bills history - ${dateLabel(selectedDate)}',
+            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 5),
+          pw.Text(
+            'Daily bill summary',
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+          ),
+          pw.SizedBox(height: 14),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey400),
+            children: [
+              pw.TableRow(
+                children: [
+                  tableCell('Total sales', header: true),
+                  tableCell('Bills', header: true),
+                  tableCell('Items sold', header: true),
+                  tableCell('Average bill', header: true),
+                ],
+              ),
+              pw.TableRow(
+                children: [
+                  tableCell('Rs ${totalSales.toStringAsFixed(2)}'),
+                  tableCell('${grouped.length}'),
+                  tableCell('$itemsSold'),
+                  tableCell('Rs ${averageBill.toStringAsFixed(2)}'),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.TableHelper.fromTextArray(
+            headers: const [
+              'Bill number',
+              'Customer',
+              'City/Village',
+              'Product',
+              'Quantity',
+              'Unit price',
+              'Item total',
+              'Bill total',
+            ],
+            data: itemRows,
+            border: pw.TableBorder.all(color: PdfColors.grey400),
+            headerDecoration: const pw.BoxDecoration(
+              color: PdfColors.blueGrey800,
+            ),
+            headerStyle: pw.TextStyle(
+              color: PdfColors.white,
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 7,
+            ),
+            cellStyle: const pw.TextStyle(fontSize: 7),
+            cellPadding: const pw.EdgeInsets.all(3),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1.6),
+              1: pw.FlexColumnWidth(1.3),
+              2: pw.FlexColumnWidth(1.2),
+              3: pw.FlexColumnWidth(1.7),
+              4: pw.FlexColumnWidth(.8),
+              5: pw.FlexColumnWidth(1),
+              6: pw.FlexColumnWidth(1),
+              7: pw.FlexColumnWidth(1),
+            },
+          ),
+          if (grouped.isEmpty)
+            ...grouped.entries.map((entry) {
+              final docs = entry.value;
+              final firstData = docs.first.data();
+              final customer = '${firstData['party'] ?? ''}'.trim();
+              final city = '${firstData['city'] ?? ''}'.trim();
+              final total = billTotal(docs);
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 16),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Container(
+                      width: double.infinity,
+                      color: PdfColors.blueGrey50,
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Row(
+                        children: [
+                          pw.Expanded(
+                            child: pw.Text(
+                              entry.key,
+                              style: pw.TextStyle(
+                                fontWeight: pw.FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          pw.Text(
+                            'Bill total: Rs ${total.toStringAsFixed(2)}',
+                            style: pw.TextStyle(
+                              fontWeight: pw.FontWeight.bold,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(vertical: 6),
+                      child: pw.Text(
+                        'Customer: ${customer.isEmpty ? 'Not specified' : customer}    City/Village: ${city.isEmpty ? 'Not specified' : city}',
+                        style: const pw.TextStyle(fontSize: 9),
+                      ),
+                    ),
+                    pw.Table(
+                      border: pw.TableBorder.all(color: PdfColors.grey400),
+                      columnWidths: const {
+                        0: pw.FlexColumnWidth(3),
+                        1: pw.FlexColumnWidth(1),
+                        2: pw.FlexColumnWidth(1.2),
+                        3: pw.FlexColumnWidth(1.2),
+                        4: pw.FlexColumnWidth(1.4),
+                      },
+                      children: [
+                        pw.TableRow(
+                          children: [
+                            tableCell('Product', header: true),
+                            tableCell(
+                              'Qty',
+                              header: true,
+                              alignment: pw.Alignment.centerRight,
+                            ),
+                            tableCell(
+                              'MRP',
+                              header: true,
+                              alignment: pw.Alignment.centerRight,
+                            ),
+                            tableCell(
+                              'Price',
+                              header: true,
+                              alignment: pw.Alignment.centerRight,
+                            ),
+                            tableCell(
+                              'Amount',
+                              header: true,
+                              alignment: pw.Alignment.centerRight,
+                            ),
+                          ],
+                        ),
+                        ...docs.map((doc) {
+                          final data = doc.data();
+                          final quantity =
+                              (data['quantity'] as num?)?.toDouble() ?? 0;
+                          final price =
+                              (data['unitPrice'] as num?)?.toDouble() ?? 0;
+                          final mrp =
+                              (data['mrp'] as num?)?.toDouble() ?? price;
+                          return pw.TableRow(
+                            children: [
+                              tableCell('${data['productName'] ?? 'Product'}'),
+                              tableCell(
+                                '${quantity.toInt()}',
+                                alignment: pw.Alignment.centerRight,
+                              ),
+                              tableCell(
+                                'Rs ${mrp.toStringAsFixed(2)}',
+                                alignment: pw.Alignment.centerRight,
+                              ),
+                              tableCell(
+                                'Rs ${price.toStringAsFixed(2)}',
+                                alignment: pw.Alignment.centerRight,
+                              ),
+                              tableCell(
+                                'Rs ${(quantity * price).toStringAsFixed(2)}',
+                                alignment: pw.Alignment.centerRight,
+                              ),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+    await Printing.sharePdf(
+      bytes: await document.save(),
+      filename: 'bills_${dateLabel(selectedDate).replaceAll('/', '-')}.pdf',
+    );
+  }
+
+  void showExportOptions(
+    BuildContext context,
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) => showModalBottomSheet<void>(
     context: context,
-    builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.print_outlined), title: const Text('Print with Bluetooth thermal printer'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Print uses bills from the selected date.'))); }),
-      ListTile(leading: const Icon(Icons.picture_as_pdf_outlined), title: const Text('Export PDF'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF export uses bills from the selected date.'))); }),
-      ListTile(leading: const Icon(Icons.table_chart_outlined), title: const Text('Export Excel'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel export uses bills from the selected date.'))); }),
-      ListTile(leading: const Icon(Icons.description_outlined), title: const Text('Export CSV'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV export uses bills from the selected date.'))); }),
-    ])),
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.print_outlined),
+            title: const Text('Print with Bluetooth thermal printer'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Print uses bills from the selected date.'),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('Export PDF'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await exportPdf(grouped);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.table_chart_outlined),
+            title: const Text('Export Excel'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await exportExcel(grouped);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Export CSV'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await exportCsv(grouped);
+            },
+          ),
+        ],
+      ),
+    ),
   );
   @override
-  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+  Widget build(
+    BuildContext context,
+  ) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
     stream: widget.controller.transactions,
     builder: (context, snapshot) {
-      final grouped = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+      final grouped =
+          <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
       for (final doc in snapshot.data?.docs ?? []) {
         final data = doc.data();
         final rawDate = data['transactionDate'] ?? data['createdAt'];
@@ -1568,56 +2454,161 @@ class _BillsHistoryState extends State<BillsHistory> {
         }
       }
       final averageBill = grouped.isEmpty ? 0 : dailySales / grouped.length;
-      return ResponsivePage(children: [
-        const Text('Bills history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        const Text('Daily cumulative bills and their item details.', style: TextStyle(color: Color(0xFF8493AD))),
-        const SizedBox(height: 18),
-        OutlinedButton.icon(onPressed: () async { final picked = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2100), initialDate: selectedDate); if (picked != null) setState(() => selectedDate = picked); }, icon: const Icon(Icons.calendar_today_outlined), label: Text('Showing ${dateLabel(selectedDate)}'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52))),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: () => showExportOptions(context), icon: const Icon(Icons.file_download_outlined), label: const Text('Export'))),
-          const SizedBox(width: 10),
-          Expanded(child: FilledButton.icon(onPressed: () => showExportOptions(context), icon: const Icon(Icons.print_outlined), label: const Text('Print'))),
-        ]),
-        const SizedBox(height: 14),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.55,
-          children: [
-            _BillSummaryCard(label: 'Total sales', value: '₹${dailySales.toStringAsFixed(2)}', icon: Icons.currency_rupee, color: const Color(0xFF168B57)),
-            _BillSummaryCard(label: 'Bills', value: '${grouped.length}', icon: Icons.receipt_long_outlined, color: primary),
-            _BillSummaryCard(label: 'Items sold', value: '$itemCount', icon: Icons.inventory_2_outlined, color: const Color(0xFFF59E0B)),
-            _BillSummaryCard(label: 'Average bill', value: '₹${averageBill.toStringAsFixed(2)}', icon: Icons.analytics_outlined, color: const Color(0xFF7C55C7)),
-          ],
-        ),
-        const SizedBox(height: 18),
-        if (!snapshot.hasData) const Center(child: CircularProgressIndicator()),
-        if (snapshot.hasData && grouped.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No bills for this date'), subtitle: Text('Completed bills will appear here.'))),
-        ...grouped.entries.map((entry) {
-          final docs = entry.value;
-          final firstData = docs.first.data();
-          final customerName = '${firstData['party'] ?? ''}'.trim();
-          final villageName = '${firstData['city'] ?? ''}'.trim();
-          final customerDetails = [
-            if (customerName.isNotEmpty) 'Customer: $customerName',
-            if (villageName.isNotEmpty) 'City/Village: $villageName',
-          ].join('  ·  ');
-          double total = 0;
-          for (final doc in docs) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; total += qty * price; }
-          return Card(elevation: 0, margin: const EdgeInsets.only(bottom: 12), child: ExpansionTile(title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${customerDetails.isEmpty ? 'Customer not specified' : customerDetails}\n${docs.length} item(s)'), trailing: Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)), children: docs.map((doc) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; final mrp = (data['mrp'] as num?)?.toDouble() ?? price; return ListTile(title: Text('${data['productName'] ?? 'Product'}'), subtitle: Text('Order ID: ${entry.key}\nQty: ${qty.toInt()}  ·  MRP: ₹${mrp.toStringAsFixed(2)}  ·  Price: ₹${price.toStringAsFixed(2)}'), isThreeLine: true, trailing: Text('₹${(qty * price).toStringAsFixed(2)}')); }).toList()));
-        }),
-      ]);
+      return ResponsivePage(
+        children: [
+          const Text(
+            'Bills history',
+            style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Daily cumulative bills and their item details.',
+            style: TextStyle(color: Color(0xFF8493AD)),
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final picked = await showDatePicker(
+                context: context,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2100),
+                initialDate: selectedDate,
+              );
+              if (picked != null) setState(() => selectedDate = picked);
+            },
+            icon: const Icon(Icons.calendar_today_outlined),
+            label: Text('Showing ${dateLabel(selectedDate)}'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => showExportOptions(context, grouped),
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: const Text('Export'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => showExportOptions(context, grouped),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Print'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.55,
+            children: [
+              _BillSummaryCard(
+                label: 'Total sales',
+                value: '₹${dailySales.toStringAsFixed(2)}',
+                icon: Icons.currency_rupee,
+                color: const Color(0xFF168B57),
+              ),
+              _BillSummaryCard(
+                label: 'Bills',
+                value: '${grouped.length}',
+                icon: Icons.receipt_long_outlined,
+                color: primary,
+              ),
+              _BillSummaryCard(
+                label: 'Items sold',
+                value: '$itemCount',
+                icon: Icons.inventory_2_outlined,
+                color: const Color(0xFFF59E0B),
+              ),
+              _BillSummaryCard(
+                label: 'Average bill',
+                value: '₹${averageBill.toStringAsFixed(2)}',
+                icon: Icons.analytics_outlined,
+                color: const Color(0xFF7C55C7),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (!snapshot.hasData)
+            const Center(child: CircularProgressIndicator()),
+          if (snapshot.hasData && grouped.isEmpty)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.receipt_long_outlined),
+                title: Text('No bills for this date'),
+                subtitle: Text('Completed bills will appear here.'),
+              ),
+            ),
+          ...grouped.entries.map((entry) {
+            final docs = entry.value;
+            final firstData = docs.first.data();
+            final customerName = '${firstData['party'] ?? ''}'.trim();
+            final villageName = '${firstData['city'] ?? ''}'.trim();
+            final customerDetails = [
+              if (customerName.isNotEmpty) 'Customer: $customerName',
+              if (villageName.isNotEmpty) 'City/Village: $villageName',
+            ].join('  ·  ');
+            double total = 0;
+            for (final doc in docs) {
+              final data = doc.data();
+              final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
+              final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+              total += qty * price;
+            }
+            return Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ExpansionTile(
+                title: Text(
+                  entry.key,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  '${customerDetails.isEmpty ? 'Customer not specified' : customerDetails}\n${docs.length} item(s)',
+                ),
+                trailing: Text(
+                  '₹${total.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                children: docs.map((doc) {
+                  final data = doc.data();
+                  final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
+                  final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+                  final mrp = (data['mrp'] as num?)?.toDouble() ?? price;
+                  return ListTile(
+                    title: Text('${data['productName'] ?? 'Product'}'),
+                    subtitle: Text(
+                      'Order ID: ${entry.key}\nQty: ${qty.toInt()}  ·  MRP: ₹${mrp.toStringAsFixed(2)}  ·  Price: ₹${price.toStringAsFixed(2)}',
+                    ),
+                    isThreeLine: true,
+                    trailing: Text('₹${(qty * price).toStringAsFixed(2)}'),
+                  );
+                }).toList(),
+              ),
+            );
+          }),
+        ],
+      );
     },
   );
 }
 
 class _BillSummaryCard extends StatelessWidget {
-  const _BillSummaryCard({required this.label, required this.value, required this.icon, required this.color});
+  const _BillSummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
   final String label;
   final String value;
   final IconData icon;
@@ -1625,14 +2616,27 @@ class _BillSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     elevation: 0,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: color.withValues(alpha: .20))),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: BorderSide(color: color.withValues(alpha: .20)),
+    ),
     child: Padding(
       padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Icon(icon, color: color, size: 21),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-        Text(label, style: const TextStyle(color: Color(0xFF8493AD), fontSize: 12)),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(icon, color: color, size: 21),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+          ),
+          Text(
+            label,
+            style: const TextStyle(color: Color(0xFF8493AD), fontSize: 12),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -1670,83 +2674,207 @@ class _BusinessSummaryState extends State<BusinessSummary> {
   }
 
   @override
-  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: widget.controller.transactionsForRange(from, to),
-    builder: (context, snapshot) {
-      var sales = 0.0;
-      var purchases = 0.0;
-      var profit = 0.0;
-      var loss = 0.0;
-      var itemsSold = 0;
-      for (final doc in snapshot.data?.docs ?? []) {
-        final data = doc.data();
-        final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
-        final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
-        final cost = (data['mrp'] as num?)?.toDouble() ?? 0;
-        final amount = quantity * price;
-        switch (data['type']) {
-          case 'Sale':
-            sales += amount;
-            profit += (price - cost) * quantity;
-            itemsSold += quantity.toInt();
-            break;
-          case 'Purchase':
-            purchases += amount;
-            break;
-          case 'Damage':
-            loss += cost * quantity;
-            break;
-        }
-      }
-      return ResponsivePage(children: [
-        const Text('Business summary', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        const Text('Sales and stock performance for a selected period.', style: TextStyle(color: Color(0xFF8493AD))),
-        const SizedBox(height: 18),
-        Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: () => pickDate(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('From ${dateLabel(from)}'))),
-          const SizedBox(width: 10),
-          Expanded(child: OutlinedButton.icon(onPressed: () => pickDate(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('To ${dateLabel(to)}'))),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: () => _showExportOptions(context), icon: const Icon(Icons.file_download_outlined), label: const Text('Export'))),
-          const SizedBox(width: 10),
-          Expanded(child: FilledButton.icon(onPressed: () => _showExportOptions(context, printOnly: true), icon: const Icon(Icons.print_outlined), label: const Text('Print'))),
-        ]),
-        const SizedBox(height: 16),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.45,
-          children: [
-            _BillSummaryCard(label: 'Sales', value: 'Rs ${sales.toStringAsFixed(2)}', icon: Icons.sell_outlined, color: const Color(0xFF168B57)),
-            _BillSummaryCard(label: 'Purchase inflow', value: 'Rs ${purchases.toStringAsFixed(2)}', icon: Icons.shopping_bag_outlined, color: primary),
-            _BillSummaryCard(label: 'Profit', value: 'Rs ${profit.toStringAsFixed(2)}', icon: Icons.trending_up, color: const Color(0xFF168B57)),
-            _BillSummaryCard(label: 'Loss', value: 'Rs ${loss.toStringAsFixed(2)}', icon: Icons.trending_down, color: const Color(0xFFD34C4C)),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Card(child: ListTile(leading: const Icon(Icons.inventory_2_outlined, color: primary), title: Text('$itemsSold items sold'), subtitle: const Text('Based on completed sale transactions in this period.'))),
-      ]);
-    },
-  );
+  Widget build(BuildContext context) =>
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: widget.controller.transactionsForRange(from, to),
+        builder: (context, snapshot) {
+          var sales = 0.0;
+          var purchases = 0.0;
+          var profit = 0.0;
+          var loss = 0.0;
+          var itemsSold = 0;
+          for (final doc in snapshot.data?.docs ?? []) {
+            final data = doc.data();
+            final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+            final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+            final cost = (data['mrp'] as num?)?.toDouble() ?? 0;
+            final amount = quantity * price;
+            switch (data['type']) {
+              case 'Sale':
+                sales += amount;
+                profit += (price - cost) * quantity;
+                itemsSold += quantity.toInt();
+                break;
+              case 'Purchase':
+                purchases += amount;
+                break;
+              case 'Damage':
+                loss += cost * quantity;
+                break;
+            }
+          }
+          return ResponsivePage(
+            children: [
+              const Text(
+                'Business summary',
+                style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Sales and stock performance for a selected period.',
+                style: TextStyle(color: Color(0xFF8493AD)),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => pickDate(true),
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text('From ${dateLabel(from)}'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => pickDate(false),
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text('To ${dateLabel(to)}'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showExportOptions(context),
+                      icon: const Icon(Icons.file_download_outlined),
+                      label: const Text('Export'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () =>
+                          _showExportOptions(context, printOnly: true),
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('Print'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1.45,
+                children: [
+                  _BillSummaryCard(
+                    label: 'Sales',
+                    value: 'Rs ${sales.toStringAsFixed(2)}',
+                    icon: Icons.sell_outlined,
+                    color: const Color(0xFF168B57),
+                  ),
+                  _BillSummaryCard(
+                    label: 'Purchase inflow',
+                    value: 'Rs ${purchases.toStringAsFixed(2)}',
+                    icon: Icons.shopping_bag_outlined,
+                    color: primary,
+                  ),
+                  _BillSummaryCard(
+                    label: 'Profit',
+                    value: 'Rs ${profit.toStringAsFixed(2)}',
+                    icon: Icons.trending_up,
+                    color: const Color(0xFF168B57),
+                  ),
+                  _BillSummaryCard(
+                    label: 'Loss',
+                    value: 'Rs ${loss.toStringAsFixed(2)}',
+                    icon: Icons.trending_down,
+                    color: const Color(0xFFD34C4C),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Card(
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: primary,
+                  ),
+                  title: Text('$itemsSold items sold'),
+                  subtitle: const Text(
+                    'Based on completed sale transactions in this period.',
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
 
   void _showExportOptions(BuildContext context, {bool printOnly = false}) {
     showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: const Icon(Icons.print_outlined), title: const Text('Bluetooth thermal printer'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect a Bluetooth thermal printer to print this report.'))); }),
-          if (!printOnly) ...[
-            ListTile(leading: const Icon(Icons.picture_as_pdf_outlined), title: const Text('Export PDF'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF export will use the selected date range.'))); }),
-            ListTile(leading: const Icon(Icons.table_chart_outlined), title: const Text('Export Excel'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel export will use the selected date range.'))); }),
-            ListTile(leading: const Icon(Icons.description_outlined), title: const Text('Export CSV'), onTap: () { Navigator.pop(sheetContext); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV export will use the selected date range.'))); }),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.print_outlined),
+              title: const Text('Bluetooth thermal printer'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Connect a Bluetooth thermal printer to print this report.',
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (!printOnly) ...[
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('Export PDF'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'PDF export will use the selected date range.',
+                      ),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.table_chart_outlined),
+                title: const Text('Export Excel'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Excel export will use the selected date range.',
+                      ),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('Export CSV'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'CSV export will use the selected date range.',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ],
-        ]),
+        ),
       ),
     );
   }

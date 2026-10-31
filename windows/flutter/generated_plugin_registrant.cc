@@ -8,13 +8,22 @@
 
 #include <cloud_firestore/cloud_firestore_plugin_c_api.h>
 #include <firebase_core/firebase_core_plugin_c_api.h>
+#include <printing/printing_plugin.h>
+#include <share_plus/share_plus_windows_plugin_c_api.h>
 #include <thermal_printer_flutter/thermal_printer_flutter_plugin_c_api.h>
+#include <url_launcher_windows/url_launcher_windows.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   CloudFirestorePluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("CloudFirestorePluginCApi"));
   FirebaseCorePluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FirebaseCorePluginCApi"));
+  PrintingPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("PrintingPlugin"));
+  SharePlusWindowsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("SharePlusWindowsPluginCApi"));
   ThermalPrinterFlutterPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ThermalPrinterFlutterPluginCApi"));
+  UrlLauncherWindowsRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("UrlLauncherWindows"));
 }
