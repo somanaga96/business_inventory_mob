@@ -104,6 +104,7 @@ class InventoryService {
     required String type,
     required double unitPrice,
     required String party,
+    required String city,
     required String note,
     required DateTime date,
   }) async {
@@ -125,6 +126,7 @@ class InventoryService {
       'type': type,
       'unitPrice': unitPrice,
       'party': party,
+      'city': city,
       'note': note,
       'inventoryAfter': after,
       'transactionDate': Timestamp.fromDate(date),

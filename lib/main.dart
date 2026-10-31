@@ -80,11 +80,13 @@ class _InventoryHomeState extends State<InventoryHome> {
           products: products,
           showInventory: () => setState(() => tab = 2),
         ),
-        Products(products: products, add: addProduct),
+        Products(products: products, add: addProduct, edit: editProduct, remove: deleteProduct),
         Stock(products: products, adjust: adjust),
         NewTransaction(products: products, submit: recordTransaction),
         TransactionHistory(controller: controller),
-        Alerts(products: products),
+        Bills(products: products, submit: recordTransaction),
+        BillsHistory(controller: controller),
+        Alerts(products: products, update: editProduct),
       ];
       return Scaffold(
         appBar: AppBar(
@@ -149,6 +151,8 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Inventory',
                   'Transactions',
                   'Transaction history',
+                  'Bills',
+                  'Bills history',
                   'Alerts',
                 ].asMap().entries.map(
                   (entry) => ListTile(
@@ -161,6 +165,8 @@ class _InventoryHomeState extends State<InventoryHome> {
                         Icons.warehouse_outlined,
                         Icons.swap_horiz,
                         Icons.history,
+                        Icons.receipt_long_outlined,
+                        Icons.receipt_long,
                         Icons.warning_amber_outlined,
                       ][entry.key],
                       color: tab == entry.key ? primary : null,
@@ -274,6 +280,7 @@ class _InventoryHomeState extends State<InventoryHome> {
     String type,
     double unitPrice,
     String party,
+    String city,
     String note,
     DateTime date,
   ) async {
@@ -284,9 +291,32 @@ class _InventoryHomeState extends State<InventoryHome> {
       type: type,
       unitPrice: unitPrice,
       party: party,
+      city: city,
       note: note,
       date: date,
     );
+  }
+
+  Future<void> editProduct(Product p) async {
+    final name = TextEditingController(text: p.name);
+    final category = TextEditingController(text: p.category);
+    final cost = TextEditingController(text: p.cost.toString());
+    final threshold = TextEditingController(text: p.minStock.toString());
+    final image = TextEditingController(text: p.imageUrl ?? '');
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Edit product'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        field(name, 'Product name'), field(category, 'Category'), field(image, 'Image URL'),
+        field(cost, 'Cost', true), field(threshold, 'Low stock level', true),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Save'))],
+    ));
+    if (ok == true) await controller.updateProduct(product: p, name: name.text.trim(), category: category.text.trim(), cost: double.tryParse(cost.text) ?? p.cost, threshold: int.tryParse(threshold.text) ?? p.minStock, imageUrl: image.text.trim());
+  }
+
+  Future<void> deleteProduct(Product p) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Delete product?'), content: Text('Remove ${p.name}?'), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete'))]));
+    if (ok == true) await controller.deleteProduct(p);
   }
 }
 
@@ -409,9 +439,11 @@ class Metric extends StatelessWidget {
 }
 
 class Products extends StatelessWidget {
-  const Products({super.key, required this.products, required this.add});
+  const Products({super.key, required this.products, required this.add, required this.edit, required this.remove});
   final List<Product> products;
   final VoidCallback add;
+  final Future<void> Function(Product) edit;
+  final Future<void> Function(Product) remove;
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
@@ -431,14 +463,15 @@ class Products extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 10),
-      ...products.map((p) => ProductTile(product: p)),
+      ...products.map((p) => ProductTile(product: p, actions: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined)), IconButton(onPressed: () => remove(p), icon: const Icon(Icons.delete_outline, color: Colors.red))]))),
     ],
   );
 }
 
 class ProductTile extends StatelessWidget {
-  const ProductTile({super.key, required this.product});
+  const ProductTile({super.key, required this.product, this.actions});
   final Product product;
+  final Widget? actions;
   @override
   Widget build(BuildContext context) => Card(
     elevation: 0,
@@ -475,7 +508,7 @@ class ProductTile extends StatelessWidget {
       subtitle: Text(
         '${product.category} · ₹${product.cost.toStringAsFixed(2)} avg. cost',
       ),
-      trailing: Column(
+      trailing: actions ?? Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -524,6 +557,20 @@ class Stock extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             child: Row(
               children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: .10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: p.imageUrl == null || p.imageUrl!.isEmpty
+                      ? const Icon(Icons.inventory_2_outlined, color: primary)
+                      : Image.network(p.imageUrl!, fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, color: primary)),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,15 +592,6 @@ class Stock extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
-                IconButton(
-                  onPressed: () => adjust(p, -1),
-                  icon: const Icon(Icons.remove_circle_outline),
-                ),
-                IconButton(
-                  onPressed: () => adjust(p, 1),
-                  color: primary,
-                  icon: const Icon(Icons.add_circle_outline),
                 ),
               ],
             ),
@@ -578,6 +616,7 @@ class NewTransaction extends StatefulWidget {
     double,
     String,
     String,
+    String,
     DateTime,
   )
   submit;
@@ -587,10 +626,11 @@ class NewTransaction extends StatefulWidget {
 
 class _NewTransactionState extends State<NewTransaction> {
   Product? selected;
-  String type = 'Purchase';
+  String type = 'Sale';
   final quantity = TextEditingController();
   final price = TextEditingController();
   final party = TextEditingController();
+  final city = TextEditingController();
   final note = TextEditingController();
   DateTime date = DateTime.now();
   bool saving = false;
@@ -599,20 +639,24 @@ class _NewTransactionState extends State<NewTransaction> {
     quantity.dispose();
     price.dispose();
     party.dispose();
+    city.dispose();
     note.dispose();
     super.dispose();
   }
 
   Future<void> save() async {
     final amount = int.tryParse(quantity.text) ?? 0;
-    if (selected == null || amount <= 0) {
+    final currentProduct = selected == null
+        ? null
+        : widget.products.where((p) => p.id == selected!.id).firstOrNull;
+    if (currentProduct == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a product and enter a quantity.')),
       );
       return;
     }
     final stockOut = type == 'Sale' || type == 'Damage';
-    if (stockOut && amount > selected!.quantity) {
+    if (stockOut && amount > currentProduct.quantity) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cannot remove more than current stock.')),
       );
@@ -621,11 +665,12 @@ class _NewTransactionState extends State<NewTransaction> {
     setState(() => saving = true);
     try {
       await widget.submit(
-        selected!,
+        currentProduct,
         amount,
         type,
-        double.tryParse(price.text) ?? selected!.cost,
+        double.tryParse(price.text) ?? currentProduct.cost,
         party.text.trim(),
+        city.text.trim(),
         note.text.trim(),
         date,
       );
@@ -633,6 +678,7 @@ class _NewTransactionState extends State<NewTransaction> {
         quantity.clear();
         note.clear();
         party.clear();
+        city.clear();
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Transaction recorded.')));
@@ -643,7 +689,11 @@ class _NewTransactionState extends State<NewTransaction> {
   }
 
   @override
-  Widget build(BuildContext context) => ListView(
+  Widget build(BuildContext context) {
+    final selectedValue = selected == null
+        ? null
+        : widget.products.where((p) => p.id == selected!.id).firstOrNull;
+    return ListView(
     padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
     children: [
       const Text(
@@ -683,7 +733,7 @@ class _NewTransactionState extends State<NewTransaction> {
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<Product>(
-                initialValue: selected,
+                initialValue: selectedValue,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Product',
@@ -693,7 +743,41 @@ class _NewTransactionState extends State<NewTransaction> {
                     .map(
                       (p) => DropdownMenuItem(
                         value: p,
-                        child: Text('${p.name} (${p.quantity} available)'),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                color: primary.withValues(alpha: .10),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: p.imageUrl == null || p.imageUrl!.isEmpty
+                                  ? const Icon(
+                                      Icons.inventory_2_outlined,
+                                      color: primary,
+                                      size: 20,
+                                    )
+                                  : Image.network(
+                                      p.imageUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.inventory_2_outlined,
+                                        color: primary,
+                                        size: 20,
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '${p.name} (${p.quantity} available)',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                     .toList(),
@@ -743,6 +827,14 @@ class _NewTransactionState extends State<NewTransaction> {
                 controller: party,
                 decoration: const InputDecoration(
                   labelText: 'Supplier / Party (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: city,
+                decoration: const InputDecoration(
+                  labelText: 'City / Village (optional)',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -799,7 +891,100 @@ class _NewTransactionState extends State<NewTransaction> {
         ),
       ),
     ],
-  );
+    );
+  }
+}
+
+class Bills extends StatefulWidget {
+  const Bills({super.key, required this.products, required this.submit});
+  final List<Product> products;
+  final Future<void> Function(Product, int, String, double, String, String, String, DateTime) submit;
+  @override
+  State<Bills> createState() => _BillsState();
+}
+
+class _BillsState extends State<Bills> {
+  Product? product;
+  final quantity = TextEditingController(text: '1');
+  final price = TextEditingController();
+  final customer = TextEditingController();
+  final city = TextEditingController();
+  final cart = <String, int>{};
+  final prices = <String, double>{};
+  int billSequence = 1;
+  late String billNumber;
+  static const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  String newBillNumber() {
+    final now = DateTime.now();
+    return '${now.day.toString().padLeft(2, '0')}_${months[now.month - 1]}_${now.year}_${billSequence++}';
+  }
+  @override
+  void initState() {
+    super.initState();
+    billNumber = newBillNumber();
+  }
+  @override
+  void dispose() {
+    quantity.dispose();
+    price.dispose();
+    customer.dispose();
+    city.dispose();
+    super.dispose();
+  }
+  Product? find(String id) => widget.products.where((p) => p.id == id).firstOrNull;
+  double get total => cart.entries.fold(0, (totalValue, e) => totalValue + (prices[e.key] ?? find(e.key)?.cost ?? 0) * e.value);
+  Product? get selectedProduct => product == null ? null : find(product!.id);
+  void add() {
+    final qty = int.tryParse(quantity.text) ?? 0;
+    if (product == null || qty <= 0) return;
+    final salePrice = double.tryParse(price.text) ?? product!.cost;
+    final existing = cart[product!.id] ?? 0;
+    if (existing + qty > product!.quantity) return;
+    setState(() {
+      cart[product!.id] = existing + qty;
+      prices[product!.id] = salePrice;
+    });
+    quantity.text = '1';
+    price.clear();
+  }
+  Future<void> complete() async {
+    if (cart.isEmpty) return;
+    for (final entry in cart.entries) {
+      final p = find(entry.key);
+      if (p != null) await widget.submit(p, entry.value, 'Sale', prices[entry.key] ?? p.cost, customer.text.trim(), city.text.trim(), billNumber, DateTime.now());
+    }
+    if (mounted) {
+      await showDialog(context: context, builder: (c) => AlertDialog(
+        title: const Text('Bill generated'),
+        content: Text('Order: $billNumber\nItems: ${cart.length}\nTotal: ₹${total.toStringAsFixed(2)}\n\nConnect a Bluetooth thermal printer in the device settings, then use Print bill to print this receipt.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')), FilledButton(onPressed: () { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Thermal printing requires a Bluetooth printer plugin configured for this device.'))); }, child: const Text('Print bill'))],
+      ));
+      setState(() { cart.clear(); prices.clear(); customer.clear(); billNumber = newBillNumber(); });
+    }
+  }
+  Future<void> printBill() async => showDialog(context: context, builder: (c) => AlertDialog(title: const Text('Print bill'), content: Text('Order $billNumber\nTotal ₹${total.toStringAsFixed(2)}'), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')), FilledButton(onPressed: () { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect a Bluetooth thermal printer to print this bill.'))); }, child: const Text('Print'))]));
+  @override
+  Widget build(BuildContext context) => ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 100), children: [
+    const Text('Bills', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
+    const SizedBox(height: 6),
+    const Text('Add multiple goods to one sale and generate a cumulative bill.', style: TextStyle(color: Color(0xFF8493AD))),
+    const SizedBox(height: 18),
+    Row(children: [Expanded(child: TextField(controller: customer, decoration: const InputDecoration(labelText: 'Shop / customer name', border: OutlineInputBorder()))), const SizedBox(width: 10), SizedBox(width: 150, child: InputDecorator(decoration: const InputDecoration(labelText: 'Bill no.', border: OutlineInputBorder()), child: Text(billNumber, overflow: TextOverflow.ellipsis))) ]),
+    const SizedBox(height: 14),
+    TextField(controller: city, decoration: const InputDecoration(labelText: 'City / Village', border: OutlineInputBorder())),
+    const SizedBox(height: 14),
+    Row(children: [Expanded(child: DropdownButtonFormField<Product>(initialValue: selectedProduct, isExpanded: true, decoration: const InputDecoration(labelText: 'Product', border: OutlineInputBorder()), items: widget.products.map((p) => DropdownMenuItem(value: p, child: Row(children: [Container(width: 34, height: 34, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(8)), child: p.imageUrl == null || p.imageUrl!.isEmpty ? const Icon(Icons.inventory_2_outlined, color: primary, size: 19) : Image.network(p.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, color: primary, size: 19))), const SizedBox(width: 10), Expanded(child: Text('${p.name} (${p.quantity})', overflow: TextOverflow.ellipsis))]))).toList(), onChanged: (v) => setState(() => product = v))), const SizedBox(width: 10), SizedBox(width: 82, child: TextField(controller: quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', border: OutlineInputBorder()))) ]),
+    const SizedBox(height: 10),
+    TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Sale price per unit', hintText: selectedProduct == null ? 'Enter price' : selectedProduct!.cost.toStringAsFixed(2), prefixText: '₹ ', border: const OutlineInputBorder())),
+    const SizedBox(height: 10),
+    FilledButton.icon(onPressed: add, icon: const Icon(Icons.add), label: const Text('Add item')),
+    const SizedBox(height: 14),
+    ...cart.entries.map((e) { final p = find(e.key)!; final salePrice = prices[e.key] ?? p.cost; return ListTile(title: Text(p.name), subtitle: Text('${e.value} × ₹${salePrice.toStringAsFixed(2)}'), trailing: Text('₹${(e.value * salePrice).toStringAsFixed(2)}')); }),
+    const Divider(),
+    Align(alignment: Alignment.centerRight, child: Text('Total ₹${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+    const SizedBox(height: 12),
+    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: cart.isEmpty ? null : printBill, icon: const Icon(Icons.print_outlined), label: const Text('Print bill'))), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: cart.isEmpty ? null : complete, icon: const Icon(Icons.receipt_long), label: const Text('Complete sale')))]),
+  ]);
 }
 
 class TransactionHistory extends StatefulWidget {
@@ -963,9 +1148,103 @@ class _TransactionHistoryState extends State<TransactionHistory> {
   );
 }
 
+class BillsHistory extends StatefulWidget {
+  const BillsHistory({super.key, required this.controller});
+  final InventoryController controller;
+  @override
+  State<BillsHistory> createState() => _BillsHistoryState();
+}
+
+class _BillsHistoryState extends State<BillsHistory> {
+  DateTime selectedDate = DateTime.now();
+  bool sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+  String dateLabel(DateTime d) => '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
+  @override
+  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: widget.controller.transactions,
+    builder: (context, snapshot) {
+      final grouped = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+      for (final doc in snapshot.data?.docs ?? []) {
+        final data = doc.data();
+        final rawDate = data['transactionDate'] ?? data['createdAt'];
+        final date = rawDate is Timestamp ? rawDate.toDate() : null;
+        if (date == null || !sameDay(date, selectedDate)) continue;
+        final bill = '${data['note'] ?? ''}'.trim();
+        if (bill.isEmpty) continue;
+        grouped.putIfAbsent(bill, () => []).add(doc);
+      }
+      double dailySales = 0;
+      var itemCount = 0;
+      for (final docs in grouped.values) {
+        for (final doc in docs) {
+          final data = doc.data();
+          final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
+          final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+          itemCount += qty.toInt();
+          dailySales += qty * price;
+        }
+      }
+      final averageBill = grouped.isEmpty ? 0 : dailySales / grouped.length;
+      return ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 100), children: [
+        const Text('Bills history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        const Text('Daily cumulative bills and their item details.', style: TextStyle(color: Color(0xFF8493AD))),
+        const SizedBox(height: 18),
+        OutlinedButton.icon(onPressed: () async { final picked = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2100), initialDate: selectedDate); if (picked != null) setState(() => selectedDate = picked); }, icon: const Icon(Icons.calendar_today_outlined), label: Text('Showing ${dateLabel(selectedDate)}'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52))),
+        const SizedBox(height: 14),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.55,
+          children: [
+            _BillSummaryCard(label: 'Total sales', value: '₹${dailySales.toStringAsFixed(2)}', icon: Icons.currency_rupee, color: const Color(0xFF168B57)),
+            _BillSummaryCard(label: 'Bills', value: '${grouped.length}', icon: Icons.receipt_long_outlined, color: primary),
+            _BillSummaryCard(label: 'Items sold', value: '$itemCount', icon: Icons.inventory_2_outlined, color: const Color(0xFFF59E0B)),
+            _BillSummaryCard(label: 'Average bill', value: '₹${averageBill.toStringAsFixed(2)}', icon: Icons.analytics_outlined, color: const Color(0xFF7C55C7)),
+          ],
+        ),
+        const SizedBox(height: 18),
+        if (!snapshot.hasData) const Center(child: CircularProgressIndicator()),
+        if (snapshot.hasData && grouped.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No bills for this date'), subtitle: Text('Completed bills will appear here.'))),
+        ...grouped.entries.map((entry) {
+          final docs = entry.value;
+          double total = 0;
+          for (final doc in docs) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; total += qty * price; }
+          return Card(elevation: 0, margin: const EdgeInsets.only(bottom: 12), child: ExpansionTile(title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${docs.length} item(s)'), trailing: Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)), children: docs.map((doc) { final data = doc.data(); final qty = (data['quantity'] as num?)?.toDouble() ?? 0; final price = (data['unitPrice'] as num?)?.toDouble() ?? 0; return ListTile(title: Text('${data['productName'] ?? 'Product'}'), subtitle: Text('${qty.toInt()} × ₹${price.toStringAsFixed(2)}'), trailing: Text('₹${(qty * price).toStringAsFixed(2)}')); }).toList()));
+        }),
+      ]);
+    },
+  );
+}
+
+class _BillSummaryCard extends StatelessWidget {
+  const _BillSummaryCard({required this.label, required this.value, required this.icon, required this.color});
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Card(
+    elevation: 0,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: color.withValues(alpha: .20))),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Icon(icon, color: color, size: 21),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        Text(label, style: const TextStyle(color: Color(0xFF8493AD), fontSize: 12)),
+      ]),
+    ),
+  );
+}
+
 class Alerts extends StatelessWidget {
-  const Alerts({super.key, required this.products});
+  const Alerts({super.key, required this.products, required this.update});
   final List<Product> products;
+  final Future<void> Function(Product) update;
   @override
   Widget build(BuildContext context) {
     final alerts = products.where((p) => p.low).toList();
@@ -996,6 +1275,7 @@ class Alerts extends StatelessWidget {
                 color: Color(0xFFE59A00),
               ),
               title: Text('${p.name} is running low'),
+              trailing: IconButton(onPressed: () => update(p), icon: const Icon(Icons.edit_outlined)),
               subtitle: Text(
                 '${p.quantity} left · reorder level ${p.minStock}',
               ),

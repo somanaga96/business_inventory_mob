@@ -36,6 +36,7 @@ class InventoryController {
     required String type,
     required double unitPrice,
     required String party,
+    required String city,
     required String note,
     required DateTime date,
   }) => _service.recordTransaction(
@@ -44,6 +45,7 @@ class InventoryController {
     type: type,
     unitPrice: unitPrice,
     party: party,
+    city: city,
     note: note,
     date: date,
   );
