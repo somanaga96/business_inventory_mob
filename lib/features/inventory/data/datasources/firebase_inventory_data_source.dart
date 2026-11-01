@@ -99,31 +99,18 @@ class FirebaseInventoryDataSource {
     required int threshold,
     String? imageUrl,
   }) async {
-    final product = _firestore.collection('products').doc();
-    final inventory = _firestore.collection('inventory').doc(product.id);
-    final batch = _firestore.batch();
+    final inventory = _firestore.collection('inventory').doc();
     final image = imageUrl?.trim();
-    batch.set(product, {
-      'name': name,
-      'category': category,
-      'threshold': threshold,
-      if (image?.isNotEmpty ?? false) 'imageUrl': image,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    batch.set(inventory, {
-      'productId': product.id,
+    await inventory.set({
       'name': name,
       'category': category,
       'quantity': quantity,
-      'threshold': threshold,
-      'avgCost': cost,
-      'lastBuyPrice': cost,
-      'costValue': quantity * cost,
+      'minStock': threshold,
+      'price': cost,
       if (image?.isNotEmpty ?? false) 'imageUrl': image,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    await batch.commit();
   }
 
   Future<void> adjustStock(Product product, int delta) async {
@@ -131,7 +118,6 @@ class FirebaseInventoryDataSource {
     final batch = _firestore.batch();
     batch.update(_firestore.collection('inventory').doc(product.id), {
       'quantity': after,
-      'costValue': after * product.cost,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     batch.set(_firestore.collection('transactions').doc(), {
@@ -156,40 +142,22 @@ class FirebaseInventoryDataSource {
     String? imageUrl,
   }) async {
     final image = imageUrl?.trim();
-    final batch = _firestore.batch();
     final productData = {
       'name': name,
       'category': category,
-      'threshold': threshold,
+      'minStock': threshold,
       'imageUrl': image,
       'updatedAt': FieldValue.serverTimestamp(),
     };
     final inventoryData = {
-      'name': name,
-      'category': category,
-      'threshold': threshold,
-      'imageUrl': image,
-      'avgCost': cost,
-      'lastBuyPrice': cost,
-      'costValue': product.quantity * cost,
-      'updatedAt': FieldValue.serverTimestamp(),
+      ...productData,
+      'price': cost,
     };
-    batch.update(
-      _firestore.collection('products').doc(product.id),
-      productData,
-    );
-    batch.update(
-      _firestore.collection('inventory').doc(product.id),
-      inventoryData,
-    );
-    await batch.commit();
+    await _firestore.collection('inventory').doc(product.id).update(inventoryData);
   }
 
   Future<void> deleteProduct(Product product) async {
-    final batch = _firestore.batch();
-    batch.delete(_firestore.collection('products').doc(product.id));
-    batch.delete(_firestore.collection('inventory').doc(product.id));
-    await batch.commit();
+    await _firestore.collection('inventory').doc(product.id).delete();
   }
 
   Future<void> recordTransaction({
@@ -205,10 +173,14 @@ class FirebaseInventoryDataSource {
     final stockIn = type == 'Purchase' || type == 'Return';
     final change = stockIn ? quantity : -quantity;
     final after = (product.quantity + change).clamp(0, 1 << 31);
+    final isPurchase = type == 'Purchase';
+    final nextCost = isPurchase
+        ? ((product.quantity * product.cost) + (quantity * unitPrice)) / after
+        : product.cost;
     final batch = _firestore.batch();
     batch.update(_firestore.collection('inventory').doc(product.id), {
       'quantity': after,
-      'costValue': after * product.cost,
+      'price': nextCost,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     batch.set(_firestore.collection('transactions').doc(), {
@@ -222,7 +194,7 @@ class FirebaseInventoryDataSource {
       'unitPrice': unitPrice,
       if (type == 'Purchase') 'purchaseQuantity': quantity,
       if (type == 'Purchase') 'buyPrice': unitPrice,
-      'mrp': product.cost,
+      'mrp': nextCost,
       'party': party,
       'city': city,
       'note': note,

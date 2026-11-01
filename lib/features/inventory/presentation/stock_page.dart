@@ -5,8 +5,12 @@ class Stock extends StatelessWidget {
   final List<Product> products;
   final Future<void> Function(Product, int) adjust;
   @override
-  Widget build(BuildContext context) => ResponsivePage(
-    children: [
+  Widget build(BuildContext context) {
+    final inStockProducts = products
+        .where((product) => product.quantity > 0)
+        .toList();
+    return ResponsivePage(
+      children: [
       const Text(
         'Inventory',
         style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
@@ -17,7 +21,7 @@ class Stock extends StatelessWidget {
         style: TextStyle(color: Color(0xFF8493AD)),
       ),
       const SizedBox(height: 18),
-      if (products.isEmpty)
+      if (inStockProducts.isEmpty)
         const Card(
           child: ListTile(
             leading: Icon(Icons.inventory_2_outlined),
@@ -25,7 +29,7 @@ class Stock extends StatelessWidget {
             subtitle: Text('Products with zero stock are hidden here.'),
           ),
         ),
-      ...products.map(
+      ...inStockProducts.map(
         (p) => Card(
           elevation: 0,
           margin: const EdgeInsets.only(bottom: 12),
@@ -97,6 +101,7 @@ class Stock extends StatelessWidget {
           ),
         ),
       ),
-    ],
-  );
+      ],
+    );
+  }
 }

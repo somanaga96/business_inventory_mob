@@ -166,6 +166,10 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
   String _dateLabel(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
+  void _changeDate(int days) {
+    setState(() => selectedDate = selectedDate.add(Duration(days: days)));
+  }
+
   @override
   Widget build(BuildContext context) =>
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -228,18 +232,41 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: selectedDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (date != null) setState(() => selectedDate = date);
-                      },
-                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                      label: Text(_dateLabel(selectedDate)),
+                    Row(
+                      children: [
+                        IconButton.outlined(
+                          onPressed: () => _changeDate(-1),
+                          icon: const Icon(Icons.chevron_left),
+                          tooltip: 'Previous day',
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final date = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                              );
+                              if (date != null) {
+                                setState(() => selectedDate = date);
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 18,
+                            ),
+                            label: Text(_dateLabel(selectedDate)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.outlined(
+                          onPressed: () => _changeDate(1),
+                          icon: const Icon(Icons.chevron_right),
+                          tooltip: 'Next day',
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
                     Row(

@@ -1,5 +1,8 @@
 import '../../../app_exports.dart';
 
+import 'package:excel_plus/excel_plus.dart' as xlsx;
+import 'package:pdf/widgets.dart' as pw;
+
 class BusinessSummary extends StatefulWidget {
   const BusinessSummary({super.key, required this.controller});
   final InventoryController controller;
@@ -98,7 +101,10 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => _showExportOptions(context),
+                      onPressed: () => _showExportOptions(
+                        context,
+                        snapshot.data?.docs ?? const [],
+                      ),
                       icon: const Icon(Icons.file_download_outlined),
                       label: const Text('Export'),
                     ),
@@ -107,7 +113,11 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () =>
-                          _showExportOptions(context, printOnly: true),
+                          _showExportOptions(
+                            context,
+                            snapshot.data?.docs ?? const [],
+                            printOnly: true,
+                          ),
                       icon: const Icon(Icons.print_outlined),
                       label: const Text('Print'),
                     ),
@@ -167,7 +177,128 @@ class _BusinessSummaryState extends State<BusinessSummary> {
         },
       );
 
-  void _showExportOptions(BuildContext context, {bool printOnly = false}) {
+  String _fileDate(DateTime value) =>
+      '${value.year}${value.month.toString().padLeft(2, '0')}${value.day.toString().padLeft(2, '0')}';
+
+  String get _exportLabel => '${_fileDate(from)}_to_${_fileDate(to)}';
+
+  List<List<dynamic>> _exportRows(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
+  ) => [
+    ['Date', 'Type', 'Product', 'Quantity', 'Unit price', 'MRP', 'Amount', 'Customer', 'City/Village', 'Reference'],
+    ...transactions.map((doc) {
+      final data = doc.data();
+      final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+      final unitPrice = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+      final rawDate = data['transactionDate'] ?? data['createdAt'];
+      final date = rawDate is Timestamp ? rawDate.toDate() : null;
+      return [
+        date == null ? '' : dateLabel(date),
+        '${data['type'] ?? ''}',
+        '${data['productName'] ?? ''}',
+        quantity,
+        unitPrice,
+        (data['mrp'] as num?)?.toDouble() ?? 0,
+        quantity * unitPrice,
+        '${data['party'] ?? ''}',
+        '${data['city'] ?? ''}',
+        '${data['note'] ?? ''}',
+      ];
+    }),
+  ];
+
+  Future<void> _shareExport(
+    List<int> bytes, {
+    required String filename,
+    required String mimeType,
+  }) => SharePlus.instance.share(
+    ShareParams(
+      files: [XFile.fromData(Uint8List.fromList(bytes), mimeType: mimeType)],
+      fileNameOverrides: [filename],
+    ),
+  );
+
+  Future<void> _exportCsv(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
+  ) => _shareExport(
+    utf8.encode(csv.encode(_exportRows(transactions))),
+    filename: 'business_summary_$_exportLabel.csv',
+    mimeType: 'text/csv',
+  );
+
+  Future<void> _exportExcel(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
+  ) async {
+    final workbook = xlsx.Excel.createExcel();
+    final sheet = workbook['Business summary'];
+    for (final row in _exportRows(transactions)) {
+      sheet.appendRow(row.map((value) {
+        if (value is int) return xlsx.IntCellValue(value);
+        if (value is double) return xlsx.DoubleCellValue(value);
+        return xlsx.TextCellValue('$value');
+      }).toList());
+    }
+    final bytes = workbook.encode();
+    if (bytes == null) throw StateError('Could not create the Excel file.');
+    await _shareExport(
+      bytes,
+      filename: 'business_summary_$_exportLabel.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  Future<void> _exportPdf(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
+  ) async {
+    final document = pw.Document();
+    final rows = _exportRows(transactions);
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(24),
+        build: (_) => [
+          pw.Text(
+            'Business summary: ${dateLabel(from)} to ${dateLabel(to)}',
+            style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 12),
+          pw.TableHelper.fromTextArray(
+            headers: rows.first.map((value) => '$value').toList(),
+            data: rows.skip(1).toList(),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+            headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 7),
+            cellStyle: const pw.TextStyle(fontSize: 6),
+            cellPadding: const pw.EdgeInsets.all(3),
+          ),
+        ],
+      ),
+    );
+    await Printing.sharePdf(
+      bytes: await document.save(),
+      filename: 'business_summary_$_exportLabel.pdf',
+    );
+  }
+
+  Future<void> _runExport(
+    BuildContext context,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to create the export file. Please try again.')),
+        );
+      }
+    }
+  }
+
+  void _showExportOptions(
+    BuildContext context,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions, {
+    bool printOnly = false,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -192,43 +323,25 @@ class _BusinessSummaryState extends State<BusinessSummary> {
               ListTile(
                 leading: const Icon(Icons.picture_as_pdf_outlined),
                 title: const Text('Export PDF'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(sheetContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'PDF export will use the selected date range.',
-                      ),
-                    ),
-                  );
+                  await _runExport(context, () => _exportPdf(transactions));
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.table_chart_outlined),
                 title: const Text('Export Excel'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(sheetContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Excel export will use the selected date range.',
-                      ),
-                    ),
-                  );
+                  await _runExport(context, () => _exportExcel(transactions));
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),
                 title: const Text('Export CSV'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(sheetContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'CSV export will use the selected date range.',
-                      ),
-                    ),
-                  );
+                  await _runExport(context, () => _exportCsv(transactions));
                 },
               ),
             ],

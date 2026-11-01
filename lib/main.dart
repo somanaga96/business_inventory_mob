@@ -47,7 +47,7 @@ class _InventoryProAppState extends State<InventoryProApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'InventoryPro',
+    title: 'Inventory',
     debugShowCheckedModeBanner: false,
     themeMode: themeMode,
     theme: buildAppTheme(Brightness.light),
@@ -161,28 +161,10 @@ class _InventoryHomeState extends State<InventoryHome> {
           ),
           actions: [
             IconButton(
-              tooltip: Theme.of(context).brightness == Brightness.dark
-                  ? 'Use light theme'
-                  : 'Use dark theme',
-              onPressed: widget.onToggleTheme,
-              icon: Icon(
-                Theme.of(context).brightness == Brightness.dark
-                    ? Icons.light_mode_outlined
-                    : Icons.dark_mode_outlined,
-                color: primary,
-              ),
-            ),
-            IconButton(
               tooltip: 'Home',
               onPressed: tab == 0 ? null : () => setState(() => tab = 0),
               icon: const Icon(Icons.home_outlined, color: primary),
             ),
-            if (tab != 5)
-              IconButton(
-                tooltip: 'Add bill',
-                onPressed: openNewBill,
-                icon: const Icon(Icons.receipt_long_outlined, color: primary),
-              ),
           ],
         ),
         drawer: Drawer(
@@ -203,6 +185,19 @@ class _InventoryHomeState extends State<InventoryHome> {
                   title: Text(
                     'InventoryPro',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Icon(
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Icons.dark_mode_outlined
+                        : Icons.light_mode_outlined,
+                  ),
+                  title: const Text('Dark theme'),
+                  trailing: Switch(
+                    value: Theme.of(context).brightness == Brightness.dark,
+                    onChanged: (_) => widget.onToggleTheme(),
                   ),
                 ),
                 const Divider(),
@@ -270,6 +265,7 @@ class _InventoryHomeState extends State<InventoryHome> {
   Future<void> addProduct() async {
     final name = TextEditingController(),
         category = TextEditingController(text: 'Other'),
+        cost = TextEditingController(),
         min = TextEditingController(text: '10'),
         imageUrl = TextEditingController();
     final save = await showModalBottomSheet<bool>(
@@ -299,6 +295,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                 const SizedBox(height: 16),
                 field(name, 'Product name'),
                 field(category, 'Category'),
+                field(cost, 'Price', true),
                 field(imageUrl, 'Image URL'),
                 field(min, 'Low stock level', true),
                 FilledButton(
@@ -319,7 +316,7 @@ class _InventoryHomeState extends State<InventoryHome> {
       await controller.addProduct(
         name: name.text.trim(),
         category: category.text.trim(),
-        cost: 0,
+        cost: double.tryParse(cost.text) ?? 0,
         quantity: 0,
         threshold: int.tryParse(min.text) ?? 10,
         imageUrl: imageUrl.text,
@@ -383,7 +380,7 @@ class _InventoryHomeState extends State<InventoryHome> {
               field(name, 'Product name'),
               field(category, 'Category'),
               field(image, 'Image URL'),
-              field(cost, 'Cost', true),
+              field(cost, 'Price', true),
               field(threshold, 'Low stock level', true),
             ],
           ),

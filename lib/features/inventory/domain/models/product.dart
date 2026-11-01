@@ -27,20 +27,11 @@ class Product {
         value is num ? value : num.tryParse('$value') ?? 0;
     return Product(
       id: doc.id,
-      name: '${data['name'] ?? data['productName'] ?? 'Untitled product'}',
+      name: '${data['name'] ?? 'Untitled product'}',
       category: '${data['category'] ?? 'Other'}',
-      cost: number(
-        data['avgCost'] ??
-            data['cost'] ??
-            data['purchasePrice'] ??
-            data['price'],
-      ).toDouble(),
-      quantity: number(
-        data['quantity'] ?? data['stock'] ?? data['currentStock'],
-      ).toInt(),
-      minStock: number(
-        data['threshold'] ?? data['minStock'] ?? data['reorderLevel'] ?? 10,
-      ).toInt(),
+      cost: number(data['price']).toDouble(),
+      quantity: number(data['quantity']).toInt(),
+      minStock: number(data['minStock'] ?? 10).toInt(),
       imageUrl: data['imageUrl'] as String?,
     );
   }

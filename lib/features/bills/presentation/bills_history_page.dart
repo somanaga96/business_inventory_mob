@@ -17,6 +17,10 @@ class _BillsHistoryState extends State<BillsHistory> {
   String dateLabel(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
 
+  void changeSelectedDate(int days) {
+    setState(() => selectedDate = selectedDate.add(Duration(days: days)));
+  }
+
   List<List<dynamic>> exportRows(
     Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
   ) {
@@ -299,7 +303,7 @@ class _BillsHistoryState extends State<BillsHistory> {
               7: pw.FlexColumnWidth(1),
             },
           ),
-          if (grouped.isEmpty)
+          if (grouped.isNotEmpty)
             ...grouped.entries.map((entry) {
               final docs = entry.value;
               final firstData = docs.first.data();
@@ -490,17 +494,14 @@ class _BillsHistoryState extends State<BillsHistory> {
         grouped.putIfAbsent(bill, () => []).add(doc);
       }
       double dailySales = 0;
-      var itemCount = 0;
       for (final docs in grouped.values) {
         for (final doc in docs) {
           final data = doc.data();
           final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
           final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
-          itemCount += qty.toInt();
           dailySales += qty * price;
         }
       }
-      final averageBill = grouped.isEmpty ? 0 : dailySales / grouped.length;
       return ResponsivePage(
         children: [
           const Text(
@@ -513,21 +514,39 @@ class _BillsHistoryState extends State<BillsHistory> {
             style: TextStyle(color: Color(0xFF8493AD)),
           ),
           const SizedBox(height: 18),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: context,
-                firstDate: DateTime(2020),
-                lastDate: DateTime(2100),
-                initialDate: selectedDate,
-              );
-              if (picked != null) setState(() => selectedDate = picked);
-            },
-            icon: const Icon(Icons.calendar_today_outlined),
-            label: Text('Showing ${dateLabel(selectedDate)}'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-            ),
+          Row(
+            children: [
+              IconButton.outlined(
+                onPressed: () => changeSelectedDate(-1),
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Previous day',
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                      initialDate: selectedDate,
+                    );
+                    if (picked != null) setState(() => selectedDate = picked);
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  label: Text('Showing ${dateLabel(selectedDate)}'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.outlined(
+                onPressed: () => changeSelectedDate(1),
+                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Next day',
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Row(
@@ -569,18 +588,6 @@ class _BillsHistoryState extends State<BillsHistory> {
                 value: '${grouped.length}',
                 icon: Icons.receipt_long_outlined,
                 color: primary,
-              ),
-              SummaryMetricCard(
-                label: 'Items sold',
-                value: '$itemCount',
-                icon: Icons.inventory_2_outlined,
-                color: const Color(0xFFF59E0B),
-              ),
-              SummaryMetricCard(
-                label: 'Average bill',
-                value: '₹${averageBill.toStringAsFixed(2)}',
-                icon: Icons.analytics_outlined,
-                color: const Color(0xFF7C55C7),
               ),
             ],
           ),
