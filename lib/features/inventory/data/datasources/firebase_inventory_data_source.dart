@@ -100,8 +100,9 @@ class FirebaseInventoryDataSource {
     String? imageUrl,
   }) async {
     final inventory = _firestore.collection('inventory').doc();
+    final batch = _firestore.batch();
     final image = imageUrl?.trim();
-    await inventory.set({
+    batch.set(inventory, {
       'name': name,
       'category': category,
       'quantity': quantity,
@@ -111,6 +112,32 @@ class FirebaseInventoryDataSource {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    // The initial quantity is stock bought for the business, so retain it in
+    // the same audit trail as purchases.  Without this record, newly added
+    // stock appears in inventory but cannot appear in purchase history or
+    // purchase totals.
+    if (quantity > 0) {
+      batch.set(_firestore.collection('transactions').doc(), {
+        'productId': inventory.id,
+        'productName': name,
+        'imageUrl': image,
+        'quantity': quantity,
+        'purchaseQuantity': quantity,
+        'change': quantity,
+        'type': 'Purchase',
+        'recordType': 'purchase',
+        'unitPrice': cost,
+        'buyPrice': cost,
+        'mrp': cost,
+        'party': '',
+        'city': '',
+        'note': 'Opening stock',
+        'inventoryAfter': quantity,
+        'transactionDate': Timestamp.fromDate(DateTime.now()),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
   }
 
   Future<void> adjustStock(Product product, int delta) async {
@@ -202,6 +229,72 @@ class FirebaseInventoryDataSource {
       'transactionDate': Timestamp.fromDate(date),
       'createdAt': FieldValue.serverTimestamp(),
     });
+    await batch.commit();
+  }
+
+  /// Saves every line of one bill in a single Firestore batch.
+  Future<void> recordSale({
+    required List<({Product product, int quantity, double unitPrice})> items,
+    required String party,
+    required String city,
+    required String billNumber,
+    required DateTime date,
+  }) async {
+    final batch = _firestore.batch();
+    for (final item in items) {
+      final after = (item.product.quantity - item.quantity).clamp(0, 1 << 31);
+      batch.update(_firestore.collection('inventory').doc(item.product.id), {
+        'quantity': after,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.set(_firestore.collection('transactions').doc(), {
+        'productId': item.product.id,
+        'productName': item.product.name,
+        'imageUrl': item.product.imageUrl,
+        'quantity': item.quantity,
+        'change': -item.quantity,
+        'type': 'Sale',
+        'recordType': 'inventory_transaction',
+        'unitPrice': item.unitPrice,
+        'mrp': item.product.cost,
+        'party': party,
+        'city': city,
+        'note': billNumber,
+        'inventoryAfter': after,
+        'transactionDate': Timestamp.fromDate(date),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  /// Corrects an existing sale and returns stock for any reduced quantity.
+  Future<void> updateSaleOrder({
+    required List<
+      ({String transactionId, String productId, int oldQuantity, int quantity, double unitPrice})
+    > items,
+    required String party,
+    required String city,
+  }) async {
+    final batch = _firestore.batch();
+    for (final item in items) {
+      if (item.quantity <= 0) {
+        throw ArgumentError.value(item.quantity, 'quantity', 'Must be at least one');
+      }
+      final stockDifference = item.oldQuantity - item.quantity;
+      batch.update(_firestore.collection('inventory').doc(item.productId), {
+        'quantity': FieldValue.increment(stockDifference),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.update(_firestore.collection('transactions').doc(item.transactionId), {
+        'quantity': item.quantity,
+        'change': -item.quantity,
+        'unitPrice': item.unitPrice,
+        'party': party,
+        'city': city,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
     await batch.commit();
   }
 }

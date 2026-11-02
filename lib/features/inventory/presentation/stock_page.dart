@@ -69,7 +69,7 @@ class Stock extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'Price: Rs ${p.cost.toStringAsFixed(2)}',
+                        '${p.quantity} x Rs ${p.cost.toStringAsFixed(2)} avg. cost',
                         style: const TextStyle(color: Color(0xFF71809A)),
                       ),
                     ],
@@ -79,14 +79,14 @@ class Stock extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${p.quantity}',
+                      'Rs ${(p.quantity * p.cost).toStringAsFixed(2)}',
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 17,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Text(
-                      'units available',
+                      'total stock value',
                       style: TextStyle(
                         fontSize: 12,
                         color: p.low

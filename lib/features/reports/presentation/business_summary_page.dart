@@ -42,29 +42,44 @@ class _BusinessSummaryState extends State<BusinessSummary> {
         builder: (context, snapshot) {
           var sales = 0.0;
           var purchases = 0.0;
-          var profit = 0.0;
-          var loss = 0.0;
+          var grossProfit = 0.0;
+          var stockLoss = 0.0;
           var itemsSold = 0;
+          var saleEntries = 0;
+          var purchaseEntries = 0;
           for (final doc in snapshot.data?.docs ?? []) {
             final data = doc.data();
-            final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
-            final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+            final type = '${data['type'] ?? data['recordType'] ?? ''}'
+                .trim()
+                .toLowerCase();
+            final quantity =
+                ((data['quantity'] ?? data['purchaseQuantity']) as num?)
+                    ?.toDouble() ??
+                0;
+            final price = ((data['unitPrice'] ?? data['buyPrice']) as num?)
+                    ?.toDouble() ??
+                0;
             final cost = (data['mrp'] as num?)?.toDouble() ?? 0;
             final amount = quantity * price;
-            switch (data['type']) {
-              case 'Sale':
+            switch (type) {
+              case 'sale':
                 sales += amount;
-                profit += (price - cost) * quantity;
+                grossProfit += (price - cost) * quantity;
                 itemsSold += quantity.toInt();
+                saleEntries++;
                 break;
-              case 'Purchase':
+              case 'purchase':
                 purchases += amount;
+                purchaseEntries++;
                 break;
-              case 'Damage':
-                loss += cost * quantity;
+              case 'damage':
+                stockLoss += cost * quantity;
                 break;
             }
           }
+          final netCashFlow = sales - purchases - stockLoss;
+          final profit = grossProfit > 0 ? grossProfit : 0.0;
+          final loss = (grossProfit < 0 ? -grossProfit : 0.0) + stockLoss;
           return ResponsivePage(
             children: [
               const Text(
@@ -73,7 +88,7 @@ class _BusinessSummaryState extends State<BusinessSummary> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Sales and stock performance for a selected period.',
+                'Cumulative buying, selling and stock performance for the selected period.',
                 style: TextStyle(color: Color(0xFF8493AD)),
               ),
               const SizedBox(height: 18),
@@ -134,13 +149,13 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                 childAspectRatio: 1.45,
                 children: [
                   SummaryMetricCard(
-                    label: 'Sales',
+                    label: 'Sales revenue',
                     value: 'Rs ${sales.toStringAsFixed(2)}',
                     icon: Icons.sell_outlined,
                     color: const Color(0xFF168B57),
                   ),
                   SummaryMetricCard(
-                    label: 'Purchase inflow',
+                    label: 'Purchase spend',
                     value: 'Rs ${purchases.toStringAsFixed(2)}',
                     icon: Icons.shopping_bag_outlined,
                     color: primary,
@@ -157,24 +172,85 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                     icon: Icons.trending_down,
                     color: const Color(0xFFD34C4C),
                   ),
+                  SummaryMetricCard(
+                    label: 'Units sold',
+                    value: '$itemsSold',
+                    icon: Icons.shopping_cart_outlined,
+                    color: const Color(0xFF168B57),
+                  ),
+                  StreamBuilder<List<Product>>(
+                    stream: widget.controller.products,
+                    builder: (context, inventorySnapshot) {
+                      final inventoryValue = (inventorySnapshot.data ?? [])
+                          .fold<double>(
+                            0,
+                            (totalValue, product) =>
+                                totalValue + (product.quantity * product.cost),
+                          );
+                      return SummaryMetricCard(
+                        label: 'Inventory value',
+                        value: 'Rs ${inventoryValue.toStringAsFixed(2)}',
+                        icon: Icons.inventory_2_outlined,
+                        color: primary,
+                      );
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
               Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.inventory_2_outlined,
-                    color: primary,
-                  ),
-                  title: Text('$itemsSold items sold'),
-                  subtitle: const Text(
-                    'Based on completed sale transactions in this period.',
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Cash movement (not profit)',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 10),
+                      _summaryRow('Selling total', sales, const Color(0xFF168B57)),
+                      _summaryRow('Buying total', purchases, primary),
+                      _summaryRow('Stock loss', stockLoss, const Color(0xFFD34C4C)),
+                      const Divider(height: 22),
+                      _summaryRow(
+                        'Sales minus purchases',
+                        netCashFlow,
+                        netCashFlow < 0 ? const Color(0xFFD34C4C) : const Color(0xFF168B57),
+                        bold: true,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$saleEntries sale ${saleEntries == 1 ? 'entry' : 'entries'} • '
+                        '$purchaseEntries purchase ${purchaseEntries == 1 ? 'entry' : 'entries'}',
+                        style: const TextStyle(color: Color(0xFF8493AD)),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
           );
         },
+      );
+
+  Widget _summaryRow(String label, double amount, Color color, {bool bold = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontWeight: bold ? FontWeight.w700 : FontWeight.w400),
+              ),
+            ),
+            Text(
+              'Rs ${amount.toStringAsFixed(2)}',
+              style: TextStyle(color: color, fontWeight: bold ? FontWeight.w800 : FontWeight.w600),
+            ),
+          ],
+        ),
       );
 
   String _fileDate(DateTime value) =>
@@ -185,7 +261,7 @@ class _BusinessSummaryState extends State<BusinessSummary> {
   List<List<dynamic>> _exportRows(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
   ) => [
-    ['Date', 'Type', 'Product', 'Quantity', 'Unit price', 'MRP', 'Amount', 'Customer', 'City/Village', 'Reference'],
+    ['Date', 'Time', 'Type', 'Product', 'Quantity', 'Unit price', 'MRP', 'Amount', 'Customer', 'City/Village', 'Reference'],
     ...transactions.map((doc) {
       final data = doc.data();
       final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
@@ -194,6 +270,9 @@ class _BusinessSummaryState extends State<BusinessSummary> {
       final date = rawDate is Timestamp ? rawDate.toDate() : null;
       return [
         date == null ? '' : dateLabel(date),
+        date == null
+            ? ''
+            : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
         '${data['type'] ?? ''}',
         '${data['productName'] ?? ''}',
         quantity,
@@ -273,9 +352,10 @@ class _BusinessSummaryState extends State<BusinessSummary> {
         ],
       ),
     );
-    await Printing.sharePdf(
-      bytes: await document.save(),
+    await _shareExport(
+      await document.save(),
       filename: 'business_summary_$_exportLabel.pdf',
+      mimeType: 'application/pdf',
     );
   }
 

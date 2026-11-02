@@ -47,8 +47,8 @@ class Dashboard extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         DashboardCard(
-          title: 'Bills',
-          subtitle: 'Create a sale or review completed bills',
+          title: 'Orders',
+          subtitle: 'Create a sale or review completed orders',
           icon: Icons.receipt_long_outlined,
           color: const Color(0xFF22B573),
           onTap: () => openTab(5),
@@ -94,19 +94,6 @@ class Dashboard extends StatelessWidget {
     final lowStock = products.where((product) => product.low).length;
     return ResponsivePage(
       children: [
-        const Text(
-          'Overview',
-          style: TextStyle(
-            fontSize: 31,
-            fontWeight: FontWeight.w800,
-            color: ink,
-          ),
-        ),
-        Text(
-          '${products.length} products',
-          style: const TextStyle(color: Color(0xFF8493AD), fontSize: 16),
-        ),
-        const SizedBox(height: 24),
         BillsOverviewCard(controller: controller, openBills: () => openTab(6)),
         const SizedBox(height: 14),
         GridView.count(
@@ -217,7 +204,7 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            'Bills summary',
+                            'Order summary',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -273,7 +260,7 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
                       children: [
                         Expanded(
                           child: _BillMetric(
-                            label: 'Bills',
+                            label: 'Orders',
                             value: '${bills.length}',
                           ),
                         ),

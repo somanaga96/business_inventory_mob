@@ -4,12 +4,8 @@ class Alerts extends StatelessWidget {
   const Alerts({
     super.key,
     required this.products,
-    required this.update,
-    required this.remove,
   });
   final List<Product> products;
-  final Future<void> Function(Product) update;
-  final Future<void> Function(Product) remove;
   @override
   Widget build(BuildContext context) {
     final alerts = products.where((p) => p.low).toList();
@@ -34,28 +30,56 @@ class Alerts extends StatelessWidget {
           (p) => Card(
             color: const Color(0xFFFFF8E7),
             child: ListTile(
-              leading: const Icon(
-                Icons.warning_amber_rounded,
-                color: Color(0xFFE59A00),
-              ),
-              title: Text('${p.name} is running low'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+              leading: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  IconButton(
-                    tooltip: 'Edit product',
-                    onPressed: () => update(p),
-                    icon: const Icon(Icons.edit_outlined),
+                  Container(
+                    width: 46,
+                    height: 46,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFE6A7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: p.imageUrl == null || p.imageUrl!.isEmpty
+                        ? const Icon(
+                            Icons.inventory_2_outlined,
+                            color: Color(0xFF6B4A00),
+                          )
+                        : Image.network(
+                            p.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.inventory_2_outlined,
+                              color: Color(0xFF6B4A00),
+                            ),
+                          ),
                   ),
-                  IconButton(
-                    tooltip: 'Delete product',
-                    onPressed: () => remove(p),
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  const Positioned(
+                    right: -5,
+                    bottom: -5,
+                    child: CircleAvatar(
+                      radius: 11,
+                      backgroundColor: Color(0xFFFFF8E7),
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: Color(0xFFE59A00),
+                      ),
+                    ),
                   ),
                 ],
               ),
+              title: Text(
+                '${p.name} is running low',
+                style: const TextStyle(
+                  color: Color(0xFF3D2A00),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               subtitle: Text(
                 '${p.quantity} left · reorder level ${p.minStock}',
+                style: const TextStyle(color: Color(0xFF684F1B)),
               ),
             ),
           ),

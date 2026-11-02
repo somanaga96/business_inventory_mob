@@ -77,4 +77,26 @@ class InventoryController {
     note: note,
     date: date,
   );
+
+  Future<void> recordSale({
+    required List<({Product product, int quantity, double unitPrice})> items,
+    required String party,
+    required String city,
+    required String billNumber,
+    required DateTime date,
+  }) => _dataSource.recordSale(
+    items: items,
+    party: party,
+    city: city,
+    billNumber: billNumber,
+    date: date,
+  );
+
+  Future<void> updateSaleOrder({
+    required List<
+      ({String transactionId, String productId, int oldQuantity, int quantity, double unitPrice})
+    > items,
+    required String party,
+    required String city,
+  }) => _dataSource.updateSaleOrder(items: items, party: party, city: city);
 }

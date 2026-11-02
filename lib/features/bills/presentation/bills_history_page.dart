@@ -27,6 +27,8 @@ class _BillsHistoryState extends State<BillsHistory> {
     final rows = <List<dynamic>>[
       [
         'Bill number',
+        'Date',
+        'Time',
         'Customer',
         'City/Village',
         'Product',
@@ -41,6 +43,8 @@ class _BillsHistoryState extends State<BillsHistory> {
       final firstData = docs.first.data();
       final customer = '${firstData['party'] ?? ''}'.trim();
       final city = '${firstData['city'] ?? ''}'.trim();
+      final rawDate = firstData['transactionDate'] ?? firstData['createdAt'];
+      final orderDate = rawDate is Timestamp ? rawDate.toDate() : null;
       for (final doc in docs) {
         final data = doc.data();
         final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
@@ -48,6 +52,8 @@ class _BillsHistoryState extends State<BillsHistory> {
         final mrp = (data['mrp'] as num?)?.toDouble() ?? price;
         rows.add([
           entry.key,
+          orderDate == null ? '' : dateLabel(orderDate),
+          orderDate == null ? '' : _timeLabel(orderDate),
           customer.isEmpty ? 'Not specified' : customer,
           city.isEmpty ? 'Not specified' : city,
           '${data['productName'] ?? 'Product'}',
@@ -67,6 +73,8 @@ class _BillsHistoryState extends State<BillsHistory> {
     final rows = <List<dynamic>>[
       [
         'Bill number',
+        'Date',
+        'Time',
         'Customer',
         'City/Village',
         'Items',
@@ -79,6 +87,8 @@ class _BillsHistoryState extends State<BillsHistory> {
       final firstData = docs.first.data();
       final customer = '${firstData['party'] ?? ''}'.trim();
       final city = '${firstData['city'] ?? ''}'.trim();
+      final rawDate = firstData['transactionDate'] ?? firstData['createdAt'];
+      final orderDate = rawDate is Timestamp ? rawDate.toDate() : null;
       var quantity = 0;
       var total = 0.0;
       for (final doc in docs) {
@@ -90,6 +100,8 @@ class _BillsHistoryState extends State<BillsHistory> {
       }
       rows.add([
         entry.key,
+        orderDate == null ? '' : dateLabel(orderDate),
+        orderDate == null ? '' : _timeLabel(orderDate),
         customer.isEmpty ? 'Not specified' : customer,
         city.isEmpty ? 'Not specified' : city,
         docs.length,
@@ -117,7 +129,7 @@ class _BillsHistoryState extends State<BillsHistory> {
     final content = csv.encode(exportRows(grouped));
     await shareExport(
       utf8.encode(content),
-      filename: 'bills_${dateLabel(selectedDate)}.csv',
+      filename: 'orders_${dateLabel(selectedDate)}.csv',
       mimeType: 'text/csv',
     );
   }
@@ -126,7 +138,7 @@ class _BillsHistoryState extends State<BillsHistory> {
     Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
   ) async {
     final workbook = xlsx.Excel.createExcel();
-    final sheet = workbook['Bills summary'];
+    final sheet = workbook['Order summary'];
     for (final row in exportRows(grouped)) {
       sheet.appendRow(
         row.map((value) {
@@ -150,7 +162,7 @@ class _BillsHistoryState extends State<BillsHistory> {
     if (bytes == null) throw StateError('Could not create the Excel file.');
     await shareExport(
       bytes,
-      filename: 'bills_${dateLabel(selectedDate)}.xlsx',
+      filename: 'orders_${dateLabel(selectedDate)}.xlsx',
       mimeType:
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
@@ -188,6 +200,8 @@ class _BillsHistoryState extends State<BillsHistory> {
       final firstData = docs.first.data();
       final customer = '${firstData['party'] ?? ''}'.trim();
       final city = '${firstData['city'] ?? ''}'.trim();
+      final rawOrderDate = firstData['transactionDate'] ?? firstData['createdAt'];
+      final orderDate = rawOrderDate is Timestamp ? rawOrderDate.toDate() : null;
       final total = billTotal(docs);
       for (var index = 0; index < docs.length; index++) {
         final data = docs[index].data();
@@ -196,6 +210,8 @@ class _BillsHistoryState extends State<BillsHistory> {
         final firstItem = index == 0;
         itemRows.add([
           firstItem ? entry.key : '',
+          firstItem && orderDate != null ? dateLabel(orderDate) : '',
+          firstItem && orderDate != null ? _timeLabel(orderDate) : '',
           firstItem ? (customer.isEmpty ? 'Not specified' : customer) : '',
           firstItem ? (city.isEmpty ? 'Not specified' : city) : '',
           '${data['productName'] ?? 'Product'}',
@@ -238,7 +254,7 @@ class _BillsHistoryState extends State<BillsHistory> {
         ),
         build: (_) => [
           pw.Text(
-            'Bills history - ${dateLabel(selectedDate)}',
+            'Order history - ${dateLabel(selectedDate)}',
             style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 5),
@@ -253,7 +269,7 @@ class _BillsHistoryState extends State<BillsHistory> {
               pw.TableRow(
                 children: [
                   tableCell('Total sales', header: true),
-                  tableCell('Bills', header: true),
+                  tableCell('Orders', header: true),
                   tableCell('Items sold', header: true),
                   tableCell('Average bill', header: true),
                 ],
@@ -272,6 +288,8 @@ class _BillsHistoryState extends State<BillsHistory> {
           pw.TableHelper.fromTextArray(
             headers: const [
               'Bill number',
+              'Date',
+              'Time',
               'Customer',
               'City/Village',
               'Product',
@@ -293,14 +311,16 @@ class _BillsHistoryState extends State<BillsHistory> {
             cellStyle: const pw.TextStyle(fontSize: 7),
             cellPadding: const pw.EdgeInsets.all(3),
             columnWidths: const {
-              0: pw.FlexColumnWidth(1.6),
-              1: pw.FlexColumnWidth(1.3),
-              2: pw.FlexColumnWidth(1.2),
-              3: pw.FlexColumnWidth(1.7),
-              4: pw.FlexColumnWidth(.8),
-              5: pw.FlexColumnWidth(1),
-              6: pw.FlexColumnWidth(1),
-              7: pw.FlexColumnWidth(1),
+              0: pw.FlexColumnWidth(1.4),
+              1: pw.FlexColumnWidth(1),
+              2: pw.FlexColumnWidth(.7),
+              3: pw.FlexColumnWidth(1.1),
+              4: pw.FlexColumnWidth(1),
+              5: pw.FlexColumnWidth(1.4),
+              6: pw.FlexColumnWidth(.7),
+              7: pw.FlexColumnWidth(.9),
+              8: pw.FlexColumnWidth(.9),
+              9: pw.FlexColumnWidth(.9),
             },
           ),
           if (grouped.isNotEmpty)
@@ -309,6 +329,11 @@ class _BillsHistoryState extends State<BillsHistory> {
               final firstData = docs.first.data();
               final customer = '${firstData['party'] ?? ''}'.trim();
               final city = '${firstData['city'] ?? ''}'.trim();
+              final rawOrderDate =
+                  firstData['transactionDate'] ?? firstData['createdAt'];
+              final orderDate = rawOrderDate is Timestamp
+                  ? rawOrderDate.toDate()
+                  : null;
               final total = billTotal(docs);
               return pw.Container(
                 margin: const pw.EdgeInsets.only(bottom: 16),
@@ -343,7 +368,7 @@ class _BillsHistoryState extends State<BillsHistory> {
                     pw.Padding(
                       padding: const pw.EdgeInsets.symmetric(vertical: 6),
                       child: pw.Text(
-                        'Customer: ${customer.isEmpty ? 'Not specified' : customer}    City/Village: ${city.isEmpty ? 'Not specified' : city}',
+                        'Date: ${orderDate == null ? '-' : dateLabel(orderDate)}  Time: ${orderDate == null ? '-' : _timeLabel(orderDate)}\nCustomer: ${customer.isEmpty ? 'Not specified' : customer}    City/Village: ${city.isEmpty ? 'Not specified' : city}',
                         style: const pw.TextStyle(fontSize: 9),
                       ),
                     ),
@@ -421,11 +446,378 @@ class _BillsHistoryState extends State<BillsHistory> {
         ],
       ),
     );
-    await Printing.sharePdf(
-      bytes: await document.save(),
-      filename: 'bills_${dateLabel(selectedDate).replaceAll('/', '-')}.pdf',
+    await shareExport(
+      await document.save(),
+      filename: 'orders_${dateLabel(selectedDate).replaceAll('/', '-')}.pdf',
+      mimeType: 'application/pdf',
     );
   }
+
+  Future<List<int>> _receiptBytes(
+    String billNumber,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final generator = Generator(
+      ThermalReceiptPrinter.paperSize,
+      await CapabilityProfile.load(),
+    );
+    final firstData = docs.first.data();
+    final customer = '${firstData['party'] ?? ''}'.trim();
+    final city = '${firstData['city'] ?? ''}'.trim();
+    final rawOrderDate = firstData['transactionDate'] ?? firstData['createdAt'];
+    final orderTime = rawOrderDate is Timestamp
+        ? _timeLabel(rawOrderDate.toDate())
+        : '-';
+    var total = 0.0;
+    final bytes = <int>[];
+    bytes.addAll(
+      generator.text(
+        'INVENTORYPRO',
+        styles: ThermalReceiptPrinter.centerBoldStyle,
+      ),
+    );
+    bytes.addAll(
+      generator.row([
+        PosColumn(
+          text: 'Order: $billNumber',
+          width: 7,
+          styles: ThermalReceiptPrinter.normalStyle,
+        ),
+        PosColumn(
+          text: 'Time: $orderTime',
+          width: 5,
+          styles: ThermalReceiptPrinter.rightStyle,
+        ),
+      ]),
+    );
+    if (customer.isNotEmpty || city.isNotEmpty) {
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: customer.isEmpty ? '' : 'Customer: $customer',
+            width: 6,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: city.isEmpty ? '' : 'City: $city',
+            width: 6,
+            styles: ThermalReceiptPrinter.rightStyle,
+          ),
+        ]),
+      );
+    }
+    bytes.addAll(generator.hr());
+    for (final doc in docs) {
+      final data = doc.data();
+      final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+      final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+      final amount = quantity * price;
+      total += amount;
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: '${data['productName'] ?? 'Product'}',
+            width: 4,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: '${quantity.toInt()} x ${price.toStringAsFixed(2)} = '
+                '${amount.toStringAsFixed(2)}',
+            width: 8,
+            styles: ThermalReceiptPrinter.rightStyle,
+          ),
+        ]),
+      );
+    }
+    bytes.addAll(generator.hr());
+    bytes.addAll(
+      generator.text(
+        'TOTAL: Rs ${total.toStringAsFixed(2)}',
+        styles: ThermalReceiptPrinter.rightBoldStyle,
+      ),
+    );
+    bytes.addAll(generator.feed(3));
+    // Partial cut without Generator.cut(), which adds five extra blank lines.
+    bytes.addAll(const [0x1D, 0x56, 0x01]);
+    return bytes;
+  }
+
+  Future<void> _printHistoryBill(
+    BuildContext context,
+    String billNumber,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final bytes = await _receiptBytes(billNumber, docs);
+    if (!context.mounted) return;
+    await ThermalReceiptPrinter.print(context, bytes);
+  }
+
+  Future<void> _editTodayOrder(
+    String orderNumber,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    if (!sameDay(selectedDate, DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only today\'s orders can be edited.')),
+      );
+      return;
+    }
+    final first = docs.first.data();
+    final customer = TextEditingController(text: '${first['party'] ?? ''}');
+    final city = TextEditingController(text: '${first['city'] ?? ''}');
+    final quantities = docs.map((doc) {
+      return TextEditingController(text: '${doc.data()['quantity'] ?? 0}');
+    }).toList();
+    final prices = docs.map((doc) {
+      return TextEditingController(text: '${doc.data()['unitPrice'] ?? 0}');
+    }).toList();
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Edit order $orderNumber'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: customer,
+                  decoration: const InputDecoration(labelText: 'Customer'),
+                ),
+                TextField(
+                  controller: city,
+                  decoration: const InputDecoration(labelText: 'City / Village'),
+                ),
+                const SizedBox(height: 12),
+                ...List.generate(docs.length, (index) {
+                  final data = docs[index].data();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text('${data['productName'] ?? 'Product'}'),
+                        ),
+                        SizedBox(
+                          width: 70,
+                          child: TextField(
+                            controller: quantities[index],
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Qty'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 90,
+                          child: TextField(
+                            controller: prices[index],
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(labelText: 'Price'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Save changes'),
+          ),
+        ],
+      ),
+    );
+    if (save == true) {
+      final updates = <
+        ({String transactionId, String productId, int oldQuantity, int quantity, double unitPrice})
+      >[];
+      for (var index = 0; index < docs.length; index++) {
+        final data = docs[index].data();
+        final quantity = int.tryParse(quantities[index].text) ?? 0;
+        final price = double.tryParse(prices[index].text) ?? -1;
+        if (quantity <= 0 || price < 0) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Enter a valid quantity and price.')),
+            );
+          }
+          customer.dispose();
+          city.dispose();
+          for (final controller in [...quantities, ...prices]) {
+            controller.dispose();
+          }
+          return;
+        }
+        updates.add((
+          transactionId: docs[index].id,
+          productId: '${data['productId']}',
+          oldQuantity: (data['quantity'] as num?)?.toInt() ?? 0,
+          quantity: quantity,
+          unitPrice: price,
+        ));
+      }
+      try {
+        await widget.controller.updateSaleOrder(
+          items: updates,
+          party: customer.text.trim(),
+          city: city.text.trim(),
+        );
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not update this order.')),
+          );
+        }
+      }
+    }
+    customer.dispose();
+    city.dispose();
+    for (final controller in [...quantities, ...prices]) {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _printSelectedDate(
+    BuildContext context,
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) async {
+    if (grouped.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No orders exist for the selected date.')),
+      );
+      return;
+    }
+    final bytes = await _summaryBytes(grouped);
+    if (!context.mounted) return;
+    await ThermalReceiptPrinter.print(context, bytes);
+  }
+
+  Future<List<int>> _summaryBytes(
+    Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> grouped,
+  ) async {
+    final generator = Generator(
+      ThermalReceiptPrinter.paperSize,
+      await CapabilityProfile.load(),
+    );
+    final bytes = <int>[];
+    var dailyTotal = 0.0;
+    bytes.addAll(
+      generator.text(
+        'INVENTORYPRO',
+        styles: ThermalReceiptPrinter.centerBoldStyle,
+      ),
+    );
+    bytes.addAll(
+      generator.text(
+        'Order summary - ${dateLabel(selectedDate)}',
+        styles: ThermalReceiptPrinter.centerStyle,
+      ),
+    );
+    bytes.addAll(generator.hr());
+    bytes.addAll(
+      generator.row([
+        PosColumn(text: 'No', width: 2, styles: ThermalReceiptPrinter.boldStyle),
+        PosColumn(
+          text: 'Cust',
+          width: 3,
+          styles: ThermalReceiptPrinter.boldStyle,
+        ),
+        PosColumn(
+          text: 'City',
+          width: 2,
+          styles: ThermalReceiptPrinter.boldStyle,
+        ),
+        PosColumn(
+          text: 'Time',
+          width: 2,
+          styles: ThermalReceiptPrinter.boldStyle,
+        ),
+        PosColumn(
+          text: 'Total',
+          width: 3,
+          styles: ThermalReceiptPrinter.rightBoldStyle,
+        ),
+      ]),
+    );
+    bytes.addAll(generator.hr());
+    for (final entry in grouped.entries) {
+      final docs = entry.value;
+      final first = docs.first.data();
+      final customer = '${first['party'] ?? ''}'.trim();
+      final city = '${first['city'] ?? ''}'.trim();
+      final rawOrderDate = first['transactionDate'] ?? first['createdAt'];
+      final orderTime = rawOrderDate is Timestamp
+          ? _timeLabel(rawOrderDate.toDate())
+          : '-';
+      final billTotal = docs.fold<double>(0, (total, doc) {
+        final data = doc.data();
+        return total +
+            ((data['quantity'] as num?)?.toDouble() ?? 0) *
+                ((data['unitPrice'] as num?)?.toDouble() ?? 0);
+      });
+      dailyTotal += billTotal;
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: _shortBillNumber(entry.key),
+            width: 2,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: _shortText(customer.isEmpty ? '-' : customer, 7),
+            width: 3,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: _shortText(city.isEmpty ? '-' : city, 5),
+            width: 2,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: orderTime,
+            width: 2,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: billTotal.toStringAsFixed(0),
+            width: 3,
+            styles: ThermalReceiptPrinter.rightStyle,
+          ),
+        ]),
+      );
+    }
+    bytes.addAll(generator.hr());
+    bytes.addAll(
+      generator.text(
+        'DAILY TOTAL: Rs ${dailyTotal.toStringAsFixed(2)}',
+        styles: ThermalReceiptPrinter.rightBoldStyle,
+      ),
+    );
+    bytes.addAll(generator.feed(3));
+    // Partial cut without Generator.cut(), which adds five extra blank lines.
+    bytes.addAll(const [0x1D, 0x56, 0x01]);
+    return bytes;
+  }
+
+  String _shortBillNumber(String value) => value.split('_').last;
+
+  String _shortText(String value, int length) =>
+      value.length <= length ? value : '${value.substring(0, length - 1)}.';
+
+  String _timeLabel(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
   void showExportOptions(
     BuildContext context,
@@ -439,13 +831,9 @@ class _BillsHistoryState extends State<BillsHistory> {
           ListTile(
             leading: const Icon(Icons.print_outlined),
             title: const Text('Print with Bluetooth thermal printer'),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(sheetContext);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Print uses bills from the selected date.'),
-                ),
-              );
+              await _printSelectedDate(context, grouped);
             },
           ),
           ListTile(
@@ -505,12 +893,12 @@ class _BillsHistoryState extends State<BillsHistory> {
       return ResponsivePage(
         children: [
           const Text(
-            'Bills history',
+            'Order history',
             style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
           const Text(
-            'Daily cumulative bills and their item details.',
+            'Daily cumulative orders and their item details.',
             style: TextStyle(color: Color(0xFF8493AD)),
           ),
           const SizedBox(height: 18),
@@ -558,10 +946,9 @@ class _BillsHistoryState extends State<BillsHistory> {
                   label: const Text('Export'),
                 ),
               ),
-              const SizedBox(width: 10),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: () => showExportOptions(context, grouped),
+                  onPressed: () => _printSelectedDate(context, grouped),
                   icon: const Icon(Icons.print_outlined),
                   label: const Text('Print'),
                 ),
@@ -584,7 +971,7 @@ class _BillsHistoryState extends State<BillsHistory> {
                 color: const Color(0xFF168B57),
               ),
               SummaryMetricCard(
-                label: 'Bills',
+                label: 'Orders',
                 value: '${grouped.length}',
                 icon: Icons.receipt_long_outlined,
                 color: primary,
@@ -598,8 +985,8 @@ class _BillsHistoryState extends State<BillsHistory> {
             const Card(
               child: ListTile(
                 leading: Icon(Icons.receipt_long_outlined),
-                title: Text('No bills for this date'),
-                subtitle: Text('Completed bills will appear here.'),
+                title: Text('No orders for this date'),
+                subtitle: Text('Completed orders will appear here.'),
               ),
             ),
           ...grouped.entries.map((entry) {
@@ -633,7 +1020,8 @@ class _BillsHistoryState extends State<BillsHistory> {
                   '₹${total.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
-                children: docs.map((doc) {
+                children: [
+                  ...docs.map((doc) {
                   final data = doc.data();
                   final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
                   final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
@@ -646,7 +1034,36 @@ class _BillsHistoryState extends State<BillsHistory> {
                     isThreeLine: true,
                     trailing: Text('₹${(qty * price).toStringAsFixed(2)}'),
                   );
-                }).toList(),
+                  }),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                    child: Row(
+                      children: [
+                        if (sameDay(selectedDate, DateTime.now())) ...[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _editTodayOrder(entry.key, docs),
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('Edit order'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _printHistoryBill(
+                              context,
+                              entry.key,
+                              docs,
+                            ),
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text('Print order'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             );
           }),

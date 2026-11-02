@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
+import 'core/services/thermal_receipt_printer.dart';
 import 'firebase/firebase_options.dart';
 import 'features/alerts/presentation/alerts_page.dart';
 import 'features/bills/presentation/bills_history_page.dart';
@@ -124,7 +125,7 @@ class _InventoryHomeState extends State<InventoryHome> {
           controller: controller,
         ),
         BillsHistory(controller: controller),
-        Alerts(products: products, update: editProduct, remove: deleteProduct),
+        Alerts(products: products),
         BusinessSummary(controller: controller),
       ];
       return Scaffold(
@@ -201,14 +202,29 @@ class _InventoryHomeState extends State<InventoryHome> {
                   ),
                 ),
                 const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.bluetooth_searching),
+                  title: const Text('Change printer'),
+                  subtitle: const Text('Choose a different printer on the next print.'),
+                  onTap: () {
+                    ThermalReceiptPrinter.resetPrinter();
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Printer selection cleared.'),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
                 ...[
                   'Overview',
                   'Products',
                   'Inventory',
                   'Purchase',
                   'Purchase history',
-                  'Bills',
-                  'Bills history',
+                  'Orders',
+                  'Order history',
                   'Alerts',
                   'Business summary',
                 ].asMap().entries.map(
@@ -241,7 +257,7 @@ class _InventoryHomeState extends State<InventoryHome> {
           ),
         ),
         body: SafeArea(child: views[tab]),
-        floatingActionButton: tab == 5
+        floatingActionButton: tab == 3 || tab == 5 || tab == 8
             ? null
             : SizedBox(
                 width: billButtonWidth,
@@ -265,7 +281,6 @@ class _InventoryHomeState extends State<InventoryHome> {
   Future<void> addProduct() async {
     final name = TextEditingController(),
         category = TextEditingController(text: 'Other'),
-        cost = TextEditingController(),
         min = TextEditingController(text: '10'),
         imageUrl = TextEditingController();
     final save = await showModalBottomSheet<bool>(
@@ -295,7 +310,6 @@ class _InventoryHomeState extends State<InventoryHome> {
                 const SizedBox(height: 16),
                 field(name, 'Product name'),
                 field(category, 'Category'),
-                field(cost, 'Price', true),
                 field(imageUrl, 'Image URL'),
                 field(min, 'Low stock level', true),
                 FilledButton(
@@ -316,7 +330,7 @@ class _InventoryHomeState extends State<InventoryHome> {
       await controller.addProduct(
         name: name.text.trim(),
         category: category.text.trim(),
-        cost: double.tryParse(cost.text) ?? 0,
+        cost: 0,
         quantity: 0,
         threshold: int.tryParse(min.text) ?? 10,
         imageUrl: imageUrl.text,

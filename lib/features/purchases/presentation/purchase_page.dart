@@ -94,13 +94,10 @@ class _PurchasePageState extends State<PurchasePage> {
     final selectedValue = selected == null
         ? null
         : widget.products.where((p) => p.id == selected!.id).firstOrNull;
-    return ResponsivePage(
+    return Stack(
       children: [
-        const Text(
-          'Purchase',
-          style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 24),
+        ResponsivePage(
+          children: [
         Card(
           elevation: 0,
           child: Padding(
@@ -228,27 +225,34 @@ class _PurchasePageState extends State<PurchasePage> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: saving ? null : save,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primary,
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                  icon: saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.check),
-                  label: Text(saving ? 'Saving…' : 'Record $type'),
-                ),
+                const SizedBox(height: 88),
               ],
             ),
+          ),
+        ),
+          ],
+        ),
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 12,
+          child: FilledButton.icon(
+            onPressed: saving ? null : save,
+            style: FilledButton.styleFrom(
+              backgroundColor: primary,
+              minimumSize: const Size.fromHeight(54),
+            ),
+            icon: saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.check),
+            label: Text(saving ? 'Saving…' : 'Record $type'),
           ),
         ),
       ],

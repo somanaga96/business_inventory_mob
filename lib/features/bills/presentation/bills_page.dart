@@ -113,8 +113,11 @@ class _BillsState extends State<Bills> {
   );
   Product? get selectedProduct {
     final selected = product == null ? null : find(product!.id);
-    return selected?.quantity == 0 ? null : selected;
+    return selected == null || availableQuantity(selected) == 0 ? null : selected;
   }
+
+  int availableQuantity(Product item) =>
+      item.quantity - (cart[item.id] ?? 0);
 
   void add() {
     final qty = int.tryParse(quantity.text) ?? 0;
@@ -132,28 +135,57 @@ class _BillsState extends State<Bills> {
 
   Future<void> complete() async {
     if (cart.isEmpty) return;
+    final shouldComplete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Complete sale?'),
+        content: Text(
+          'Save this bill with ${cart.length} item(s) for '
+          'Rs ${total.toStringAsFixed(2)}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Complete sale'),
+          ),
+        ],
+      ),
+    );
+    if (shouldComplete != true) return;
+    await _completeSale();
+  }
+
+  Future<void> _completeSale() async {
+    if (cart.isEmpty) return;
+    final saleItems = <({Product product, int quantity, double unitPrice})>[];
     for (final entry in cart.entries) {
-      final p = find(entry.key);
-      if (p != null) {
-        await widget.submit(
-          p,
-          entry.value,
-          'Sale',
-          prices[entry.key] ?? p.cost,
-          customer.text.trim(),
-          city.text.trim(),
-          billNumber,
-          DateTime.now(),
-        );
-      }
+      final item = find(entry.key);
+      if (item == null) continue;
+      saleItems.add((
+        product: item,
+        quantity: entry.value,
+        unitPrice: prices[entry.key] ?? item.cost,
+      ));
     }
+    if (saleItems.length != cart.length) return;
+    await widget.controller.recordSale(
+      items: saleItems,
+      party: customer.text.trim(),
+      city: city.text.trim(),
+      billNumber: billNumber,
+      date: DateTime.now(),
+    );
     if (mounted) {
       await showDialog(
         context: context,
         builder: (c) => AlertDialog(
-          title: const Text('Bill generated'),
+          title: const Text('Order generated'),
           content: Text(
-            'Order: $billNumber\nItems: ${cart.length}\nTotal: ₹${total.toStringAsFixed(2)}\n\nConnect a Bluetooth thermal printer in the device settings, then use Print bill to print this receipt.',
+            'Order: $billNumber\nItems: ${cart.length}\nTotal: ₹${total.toStringAsFixed(2)}\n\nConnect a Bluetooth thermal printer in the device settings, then use Print order to print this receipt.',
           ),
           actions: [
             TextButton(
@@ -161,17 +193,11 @@ class _BillsState extends State<Bills> {
               child: const Text('Close'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(c);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Thermal printing requires a Bluetooth printer plugin configured for this device.',
-                    ),
-                  ),
-                );
+                await _printCurrentBill();
               },
-              child: const Text('Print bill'),
+              child: const Text('Print order'),
             ),
           ],
         ),
@@ -190,10 +216,109 @@ class _BillsState extends State<Bills> {
     }
   }
 
+  Future<List<int>> _receiptBytes() async {
+    // Capture the bill before awaiting. Completing a sale clears the cart while
+    // the Bluetooth printer picker/profile is loading.
+    final items = <({String name, int quantity, double unitPrice})>[];
+    for (final entry in cart.entries) {
+      final item = find(entry.key);
+      if (item == null) continue;
+      items.add((
+        name: item.name,
+        quantity: entry.value,
+        unitPrice: prices[entry.key] ?? item.cost,
+      ));
+    }
+    final receiptBillNumber = billNumber;
+    final receiptCustomer = customer.text.trim();
+    final receiptCity = city.text.trim();
+    final receiptTime = DateTime.now();
+    final receiptTotal = items.fold<double>(
+      0,
+      (value, item) => value + item.quantity * item.unitPrice,
+    );
+    final generator = Generator(
+      ThermalReceiptPrinter.paperSize,
+      await CapabilityProfile.load(),
+    );
+    final bytes = <int>[];
+    bytes.addAll(
+      generator.text(
+        'INVENTORYPRO',
+        styles: ThermalReceiptPrinter.centerBoldStyle,
+      ),
+    );
+    bytes.addAll(
+      generator.row([
+        PosColumn(
+          text: 'Order: $receiptBillNumber',
+          width: 7,
+          styles: ThermalReceiptPrinter.normalStyle,
+        ),
+        PosColumn(
+          text: 'Time: ${receiptTime.hour.toString().padLeft(2, '0')}:${receiptTime.minute.toString().padLeft(2, '0')}',
+          width: 5,
+          styles: ThermalReceiptPrinter.rightStyle,
+        ),
+      ]),
+    );
+    if (receiptCustomer.isNotEmpty || receiptCity.isNotEmpty) {
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: receiptCustomer.isEmpty ? '' : 'Customer: $receiptCustomer',
+            width: 6,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: receiptCity.isEmpty ? '' : 'City: $receiptCity',
+            width: 6,
+            styles: ThermalReceiptPrinter.rightStyle,
+          ),
+        ]),
+      );
+    }
+    bytes.addAll(generator.hr());
+    for (final item in items) {
+      bytes.addAll(
+        generator.row([
+          PosColumn(
+            text: item.name,
+            width: 4,
+            styles: ThermalReceiptPrinter.normalStyle,
+          ),
+          PosColumn(
+            text: '${item.quantity} x ${item.unitPrice.toStringAsFixed(2)} = '
+                '${(item.quantity * item.unitPrice).toStringAsFixed(2)}',
+            width: 8,
+            styles: ThermalReceiptPrinter.rightStyle,
+          ),
+        ]),
+      );
+    }
+    bytes.addAll(generator.hr());
+    bytes.addAll(
+      generator.text(
+        'TOTAL: Rs ${receiptTotal.toStringAsFixed(2)}',
+        styles: ThermalReceiptPrinter.rightBoldStyle,
+      ),
+    );
+    bytes.addAll(generator.feed(3));
+    // Partial cut without Generator.cut(), which adds five extra blank lines.
+    bytes.addAll(const [0x1D, 0x56, 0x01]);
+    return bytes;
+  }
+
+  Future<void> _printCurrentBill() async {
+    final bytes = await _receiptBytes();
+    if (!mounted) return;
+    await ThermalReceiptPrinter.print(context, bytes);
+  }
+
   Future<void> printBill() async => showDialog(
     context: context,
     builder: (c) => AlertDialog(
-      title: const Text('Print bill'),
+      title: const Text('Print order'),
       content: Text('Order $billNumber\nTotal ₹${total.toStringAsFixed(2)}'),
       actions: [
         TextButton(
@@ -201,15 +326,9 @@ class _BillsState extends State<Bills> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () {
+          onPressed: () async {
             Navigator.pop(c);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Connect a Bluetooth thermal printer to print this bill.',
-                ),
-              ),
-            );
+            await _printCurrentBill();
           },
           child: const Text('Print'),
         ),
@@ -221,18 +340,10 @@ class _BillsState extends State<Bills> {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final billNumberWidth = screenWidth * .28;
     final quantityWidth = screenWidth * .18;
-    return ResponsivePage(
+    return Stack(
       children: [
-        const Text(
-          'Bills',
-          style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Add multiple goods to one sale and generate a cumulative bill.',
-          style: TextStyle(color: Color(0xFF8493AD)),
-        ),
-        const SizedBox(height: 18),
+        ResponsivePage(
+          children: [
         Row(
           children: [
             Expanded(
@@ -277,7 +388,7 @@ class _BillsState extends State<Bills> {
                   border: OutlineInputBorder(),
                 ),
                 items: widget.products
-                    .where((p) => p.quantity > 0)
+                    .where((p) => availableQuantity(p) > 0)
                     .map(
                       (p) => DropdownMenuItem(
                         value: p,
@@ -310,7 +421,7 @@ class _BillsState extends State<Bills> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                '${p.name} (${p.quantity})',
+                                '${p.name} (${availableQuantity(p)})',
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -373,25 +484,38 @@ class _BillsState extends State<Bills> {
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: cart.isEmpty || !billNumberReady ? null : printBill,
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('Print bill'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: cart.isEmpty || !billNumberReady ? null : complete,
-                icon: const Icon(Icons.receipt_long),
-                label: const Text('Complete sale'),
-              ),
-            ),
+        const SizedBox(height: 88),
           ],
+        ),
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 12,
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: cart.isEmpty || !billNumberReady ? null : printBill,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                  ),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Print order'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: cart.isEmpty || !billNumberReady ? null : complete,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                  ),
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('Complete sale'),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
