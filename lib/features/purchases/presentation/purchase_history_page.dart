@@ -38,6 +38,8 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   double _total(Map<String, dynamic> d) => _qty(d) * _price(d);
   bool _isPurchase(Map<String, dynamic> d) =>
       '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'purchase';
+  String _short(String value, int maxLength) =>
+      value.length <= maxLength ? value : '${value.substring(0, maxLength - 1)}.';
 
   Future<void> _pick(bool isFrom) async {
     final value = await showDatePicker(
@@ -92,11 +94,46 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     bytes.addAll(g.text('Purchase summary', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.text('${_date(from)} - ${_date(to)}', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
-    for (final doc in docs) {
+    bytes.addAll(g.row([
+      PosColumn(text: 'No', width: 1, styles: ThermalReceiptPrinter.boldStyle),
+      PosColumn(text: 'Item', width: 2, styles: ThermalReceiptPrinter.boldStyle),
+      PosColumn(text: 'Date', width: 2, styles: ThermalReceiptPrinter.boldStyle),
+      PosColumn(text: 'Qty x rate', width: 4, styles: ThermalReceiptPrinter.rightBoldStyle),
+      PosColumn(text: 'Total', width: 3, styles: ThermalReceiptPrinter.rightBoldStyle),
+    ]));
+    bytes.addAll(g.hr());
+    for (var index = 0; index < docs.length; index++) {
+      final doc = docs[index];
       final d = doc.data();
+      final purchasedAt = _when(d);
       bytes.addAll(g.row([
-        PosColumn(text: '${d['productName'] ?? 'Product'} (${_qty(d)})', width: 7, styles: ThermalReceiptPrinter.normalStyle),
-        PosColumn(text: _total(d).toStringAsFixed(2), width: 5, styles: ThermalReceiptPrinter.rightStyle),
+        PosColumn(
+          text: '${index + 1}',
+          width: 1,
+          styles: ThermalReceiptPrinter.normalStyle,
+        ),
+        PosColumn(
+          text: _short('${d['productName'] ?? 'Product'}', 7),
+          width: 2,
+          styles: ThermalReceiptPrinter.normalStyle,
+        ),
+        PosColumn(
+          text: purchasedAt == null
+              ? '-'
+              : '${purchasedAt.day.toString().padLeft(2, '0')} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][purchasedAt.month - 1]}',
+          width: 2,
+          styles: ThermalReceiptPrinter.normalStyle,
+        ),
+        PosColumn(
+          text: '${_qty(d)} x ${_price(d).toStringAsFixed(2)}',
+          width: 4,
+          styles: ThermalReceiptPrinter.rightStyle,
+        ),
+        PosColumn(
+          text: _total(d).toStringAsFixed(2),
+          width: 3,
+          styles: ThermalReceiptPrinter.rightStyle,
+        ),
       ]));
     }
     bytes.addAll(g.hr());
@@ -165,7 +202,6 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
       return ResponsivePage(children: [
         const Text('Purchase history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('Purchases and supplier details for a selected period.', style: TextStyle(color: Color(0xFF8493AD))),
         const SizedBox(height: 18),
         Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => _pick(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('From ${_date(from)}'))), const SizedBox(width: 10), Expanded(child: OutlinedButton.icon(onPressed: () => _pick(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('To ${_date(to)}')))]),
         const SizedBox(height: 10),
