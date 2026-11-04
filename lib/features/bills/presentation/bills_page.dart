@@ -6,6 +6,7 @@ class Bills extends StatefulWidget {
     required this.products,
     required this.submit,
     required this.controller,
+    required this.language,
   });
   final List<Product> products;
   final Future<void> Function(
@@ -20,6 +21,7 @@ class Bills extends StatefulWidget {
   )
   submit;
   final InventoryController controller;
+  final ProductNameLanguage language;
   @override
   State<Bills> createState() => _BillsState();
 }
@@ -224,7 +226,7 @@ class _BillsState extends State<Bills> {
       final item = find(entry.key);
       if (item == null) continue;
       items.add((
-        name: item.name,
+        name: item.nameFor(widget.language),
         quantity: entry.value,
         unitPrice: prices[entry.key] ?? item.cost,
       ));
@@ -280,21 +282,12 @@ class _BillsState extends State<Bills> {
     }
     bytes.addAll(generator.hr());
     for (final item in items) {
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: item.name,
-            width: 4,
-            styles: ThermalReceiptPrinter.normalStyle,
-          ),
-          PosColumn(
-            text: '${item.quantity} x ${item.unitPrice.toStringAsFixed(2)} = '
-                '${(item.quantity * item.unitPrice).toStringAsFixed(2)}',
-            width: 8,
-            styles: ThermalReceiptPrinter.rightStyle,
-          ),
-        ]),
-      );
+      bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
+        generator,
+        name: item.name,
+        amount: '${item.quantity} x ${item.unitPrice.toStringAsFixed(2)} = '
+            '${(item.quantity * item.unitPrice).toStringAsFixed(2)}',
+      ));
     }
     bytes.addAll(generator.hr());
     bytes.addAll(
@@ -421,7 +414,7 @@ class _BillsState extends State<Bills> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                '${p.name} (${availableQuantity(p)})',
+                                '${p.nameFor(widget.language)} (${availableQuantity(p)})',
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -471,7 +464,7 @@ class _BillsState extends State<Bills> {
           final p = find(e.key)!;
           final salePrice = prices[e.key] ?? p.cost;
           return ListTile(
-            title: Text(p.name),
+            title: Text(p.nameFor(widget.language)),
             subtitle: Text('${e.value} × ₹${salePrice.toStringAsFixed(2)}'),
             trailing: Text('₹${(e.value * salePrice).toStringAsFixed(2)}'),
           );

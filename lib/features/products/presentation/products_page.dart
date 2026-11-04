@@ -1,19 +1,34 @@
 import '../../../app_exports.dart';
 
-class Products extends StatelessWidget {
+class Products extends StatefulWidget {
+  final List<Product> products;
+  final VoidCallback add;
+  final Future<void> Function(Product) edit;
+  final Future<void> Function(Product) remove;
+  final ProductNameLanguage language;
   const Products({
     super.key,
     required this.products,
     required this.add,
     required this.edit,
     required this.remove,
+    required this.language,
   });
-  final List<Product> products;
-  final VoidCallback add;
-  final Future<void> Function(Product) edit;
-  final Future<void> Function(Product) remove;
   @override
-  Widget build(BuildContext context) => ResponsivePage(
+  State<Products> createState() => _ProductsState();
+}
+
+class _ProductsState extends State<Products> {
+  String query = '';
+  String? category;
+  @override
+  Widget build(BuildContext context) {
+    final categories = widget.products.map((p) => p.category).toSet().toList()..sort();
+    final visible = widget.products.where((p) {
+      final search = '${p.name} ${p.tamilName ?? ''} ${p.marathiName ?? ''} ${p.category}'.toLowerCase();
+      return (category == null || p.category == category) && search.contains(query.toLowerCase());
+    });
+    return ResponsivePage(
     children: [
       Row(
         children: [
@@ -24,24 +39,44 @@ class Products extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: add,
+            onPressed: widget.add,
             icon: const Icon(Icons.add_circle, color: primary),
           ),
         ],
       ),
       const SizedBox(height: 10),
-      ...products.map(
+      TextField(
+        onChanged: (value) => setState(() => query = value),
+        decoration: const InputDecoration(
+          labelText: 'Search products',
+          prefixIcon: Icon(Icons.search),
+          border: OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 10),
+      DropdownButtonFormField<String?>(
+        initialValue: category,
+        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+        items: [
+          const DropdownMenuItem<String?>(value: null, child: Text('All categories')),
+          ...categories.map((value) => DropdownMenuItem(value: value, child: Text(value))),
+        ],
+        onChanged: (value) => setState(() => category = value),
+      ),
+      const SizedBox(height: 12),
+      ...visible.map(
         (p) => ProductTile(
           product: p,
+          language: widget.language,
           actions: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                onPressed: () => edit(p),
+                onPressed: () => widget.edit(p),
                 icon: const Icon(Icons.edit_outlined),
               ),
               IconButton(
-                onPressed: () => remove(p),
+                onPressed: () => widget.remove(p),
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
               ),
             ],
@@ -49,12 +84,14 @@ class Products extends StatelessWidget {
         ),
       ),
     ],
-  );
+    );
+  }
 }
 
 class ProductTile extends StatelessWidget {
-  const ProductTile({super.key, required this.product, this.actions});
+  const ProductTile({super.key, required this.product, required this.language, this.actions});
   final Product product;
+  final ProductNameLanguage language;
   final Widget? actions;
   @override
   Widget build(BuildContext context) => Card(
@@ -85,10 +122,7 @@ class ProductTile extends StatelessWidget {
                     const Icon(Icons.inventory_2_outlined, color: primary),
               ),
       ),
-      title: Text(
-        product.name,
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
+      title: Text(product.nameFor(language), style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(
         '${product.category} · ₹${product.cost.toStringAsFixed(2)} avg. cost',
       ),

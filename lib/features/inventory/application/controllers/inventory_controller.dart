@@ -31,6 +31,8 @@ class InventoryController {
     required int quantity,
     required int threshold,
     String? imageUrl,
+    String? tamilName,
+    String? marathiName,
   }) => _dataSource.addProduct(
     name: name,
     category: category,
@@ -38,6 +40,8 @@ class InventoryController {
     quantity: quantity,
     threshold: threshold,
     imageUrl: imageUrl,
+    tamilName: tamilName,
+    marathiName: marathiName,
   );
   Future<void> adjustStock(Product product, int delta) =>
       _dataSource.adjustStock(product, delta);
@@ -48,6 +52,8 @@ class InventoryController {
     required double cost,
     required int threshold,
     String? imageUrl,
+    String? tamilName,
+    String? marathiName,
   }) => _dataSource.updateProduct(
     product: product,
     name: name,
@@ -55,6 +61,8 @@ class InventoryController {
     cost: cost,
     threshold: threshold,
     imageUrl: imageUrl,
+    tamilName: tamilName,
+    marathiName: marathiName,
   );
   Future<void> deleteProduct(Product product) =>
       _dataSource.deleteProduct(product);

@@ -86,11 +86,6 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                 'Business summary',
                 style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Cumulative buying, selling and stock performance for the selected period.',
-                style: TextStyle(color: Color(0xFF8493AD)),
-              ),
               const SizedBox(height: 18),
               Row(
                 children: [

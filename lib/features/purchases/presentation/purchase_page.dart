@@ -1,8 +1,9 @@
 import '../../../app_exports.dart';
 
 class PurchasePage extends StatefulWidget {
-  const PurchasePage({super.key, required this.products, required this.submit});
+  const PurchasePage({super.key, required this.products, required this.submit, required this.language});
   final List<Product> products;
+  final ProductNameLanguage language;
   final Future<void> Function(
     Product,
     int,
@@ -145,7 +146,7 @@ class _PurchasePageState extends State<PurchasePage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  '${p.name} (${p.quantity} available)',
+                                  '${p.nameFor(widget.language)} (${p.quantity} available)',
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as image;
 import 'package:thermal_printer_flutter/thermal_printer_flutter.dart';
 
 /// Sends ESC/POS jobs to a paired Bluetooth thermal printer.
@@ -39,6 +41,95 @@ class ThermalReceiptPrinter {
   static const _usbChannel = MethodChannel('inventory/usb_thermal_printer');
   static Printer? _selectedBluetoothPrinter;
   static String? _savedBluetoothAddress;
+
+  /// Renders Tamil and Marathi as a bitmap before printing. ESC/POS built-in
+  /// fonts are limited to Latin code pages, while bitmap printing works on
+  /// standard thermal printers regardless of their configured code page.
+  static Future<List<int>> receiptText(
+    Generator generator,
+    String text, {
+    PosStyles styles = normalStyle,
+  }) async {
+    if (!RegExp(r'[\u0900-\u097F\u0B80-\u0BFF]').hasMatch(text)) {
+      return generator.text(text, styles: styles);
+    }
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(color: Colors.black, fontSize: 24),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: switch (styles.align) {
+        PosAlign.center => TextAlign.center,
+        PosAlign.right => TextAlign.right,
+        _ => TextAlign.left,
+      },
+    )..layout(maxWidth: 540);
+    final width = 576;
+    final height = painter.height.ceil() + 12;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)
+      ..drawColor(Colors.white, BlendMode.src)
+      ..translate(18, 6);
+    painter.paint(canvas, Offset.zero);
+    final rendered = await recorder.endRecording().toImage(width, height);
+    final data = await rendered.toByteData(format: ui.ImageByteFormat.png);
+    rendered.dispose();
+    if (data == null) return generator.text(text, styles: styles);
+    final bitmap = image.decodePng(data.buffer.asUint8List());
+    if (bitmap == null) return generator.text(text, styles: styles);
+    return generator.image(bitmap, align: styles.align);
+  }
+
+  /// Produces a single receipt line with a script-aware product name at the
+  /// left and quantity/price/total aligned at the right.
+  static Future<List<int>> receiptItemRow(
+    Generator generator, {
+    required String name,
+    required String amount,
+  }) async {
+    // Receipt rows have a fixed printable width. Keep names on one line and
+    // make the truncation predictable for every selected language.
+    final displayName = name.length > 13 ? '${name.substring(0, 13)}..' : name;
+    if (!RegExp(r'[\u0900-\u097F\u0B80-\u0BFF]').hasMatch(displayName)) {
+      return generator.row([
+        PosColumn(text: displayName, width: 4, styles: normalStyle),
+        PosColumn(text: amount, width: 8, styles: rightStyle),
+      ]);
+    }
+    final namePainter = TextPainter(
+      text: TextSpan(
+        text: displayName,
+        style: const TextStyle(color: Colors.black, fontSize: 23),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: 280);
+    final amountPainter = TextPainter(
+      text: TextSpan(
+        text: amount,
+        style: const TextStyle(color: Colors.black, fontSize: 20),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.right,
+    )..layout(maxWidth: 265);
+    final height = [namePainter.height, amountPainter.height]
+            .reduce((a, b) => a > b ? a : b)
+            .ceil() +
+        12;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..drawColor(Colors.white, BlendMode.src);
+    namePainter.paint(canvas, const Offset(12, 6));
+    amountPainter.paint(canvas, Offset(564 - amountPainter.width, 7));
+    final rendered = await recorder.endRecording().toImage(576, height);
+    final data = await rendered.toByteData(format: ui.ImageByteFormat.png);
+    rendered.dispose();
+    if (data == null) return generator.text('$displayName  $amount', styles: normalStyle);
+    final bitmap = image.decodePng(data.buffer.asUint8List());
+    if (bitmap == null) return generator.text('$displayName  $amount', styles: normalStyle);
+    return generator.image(bitmap, align: PosAlign.left);
+  }
 
   /// Clears the printer selected for this app session.
   static void resetPrinter() {

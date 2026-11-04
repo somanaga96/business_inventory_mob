@@ -66,12 +66,15 @@ class InventoryHome extends StatefulWidget {
 
 class _InventoryHomeState extends State<InventoryHome> {
   int tab = 0;
+  ProductNameLanguage productLanguage = ProductNameLanguage.english;
   late final InventoryController controller;
   bool firebaseReady = false;
   final sample = const [
     Product(
       id: 'egg',
       name: 'Egg',
+      tamilName: 'முட்டை',
+      marathiName: 'अंडे',
       category: 'Other',
       cost: 5,
       quantity: 50,
@@ -80,6 +83,8 @@ class _InventoryHomeState extends State<InventoryHome> {
     Product(
       id: 'kurkure',
       name: 'Kurkure',
+      tamilName: 'குர்குரே',
+      marathiName: 'कुरकुरे',
       category: 'Kitchen',
       cost: 4,
       quantity: 50,
@@ -115,17 +120,27 @@ class _InventoryHomeState extends State<InventoryHome> {
           add: addProduct,
           edit: editProduct,
           remove: deleteProduct,
+          language: productLanguage,
         ),
-        Stock(products: products, adjust: adjust),
-        PurchasePage(products: products, submit: recordTransaction),
+        Stock(products: products, adjust: adjust, language: productLanguage),
+        PurchasePage(
+          products: products,
+          submit: recordTransaction,
+          language: productLanguage,
+        ),
         PurchaseHistoryPage(controller: controller),
         Bills(
           products: products,
           submit: recordTransaction,
           controller: controller,
+          language: productLanguage,
         ),
-        BillsHistory(controller: controller),
-        Alerts(products: products),
+        BillsHistory(
+          controller: controller,
+          products: products,
+          language: productLanguage,
+        ),
+        Alerts(products: products, language: productLanguage),
         BusinessSummary(controller: controller),
       ];
       return Scaffold(
@@ -186,6 +201,28 @@ class _InventoryHomeState extends State<InventoryHome> {
                   title: Text(
                     'InventoryPro',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.translate),
+                  title: const Text('Product name language'),
+                  trailing: DropdownButton<ProductNameLanguage>(
+                    value: productLanguage,
+                    underline: const SizedBox.shrink(),
+                    items: ProductNameLanguage.values
+                        .map(
+                          (language) => DropdownMenuItem(
+                            value: language,
+                            child: Text(language.label),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (language) {
+                      if (language != null) {
+                        setState(() => productLanguage = language);
+                      }
+                    },
                   ),
                 ),
                 const Divider(),
@@ -280,6 +317,8 @@ class _InventoryHomeState extends State<InventoryHome> {
 
   Future<void> addProduct() async {
     final name = TextEditingController(),
+        tamilName = TextEditingController(),
+        marathiName = TextEditingController(),
         category = TextEditingController(text: 'Other'),
         min = TextEditingController(text: '10'),
         imageUrl = TextEditingController();
@@ -308,7 +347,9 @@ class _InventoryHomeState extends State<InventoryHome> {
                   style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 16),
-                field(name, 'Product name'),
+                field(name, 'Product name (English)'),
+                field(tamilName, 'Product name (Tamil)'),
+                field(marathiName, 'Product name (Marathi)'),
                 field(category, 'Category'),
                 field(imageUrl, 'Image URL'),
                 field(min, 'Low stock level', true),
@@ -334,6 +375,8 @@ class _InventoryHomeState extends State<InventoryHome> {
         quantity: 0,
         threshold: int.tryParse(min.text) ?? 10,
         imageUrl: imageUrl.text,
+        tamilName: tamilName.text,
+        marathiName: marathiName.text,
       );
     }
   }
@@ -379,6 +422,8 @@ class _InventoryHomeState extends State<InventoryHome> {
 
   Future<void> editProduct(Product p) async {
     final name = TextEditingController(text: p.name);
+    final tamilName = TextEditingController(text: p.tamilName ?? '');
+    final marathiName = TextEditingController(text: p.marathiName ?? '');
     final category = TextEditingController(text: p.category);
     final cost = TextEditingController(text: p.cost.toString());
     final threshold = TextEditingController(text: p.minStock.toString());
@@ -391,7 +436,9 @@ class _InventoryHomeState extends State<InventoryHome> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              field(name, 'Product name'),
+              field(name, 'Product name (English)'),
+              field(tamilName, 'Product name (Tamil)'),
+              field(marathiName, 'Product name (Marathi)'),
               field(category, 'Category'),
               field(image, 'Image URL'),
               field(cost, 'Price', true),
@@ -419,6 +466,8 @@ class _InventoryHomeState extends State<InventoryHome> {
         cost: double.tryParse(cost.text) ?? p.cost,
         threshold: int.tryParse(threshold.text) ?? p.minStock,
         imageUrl: image.text.trim(),
+        tamilName: tamilName.text,
+        marathiName: marathiName.text,
       );
     }
   }

@@ -1,9 +1,10 @@
 import '../../../app_exports.dart';
 
 class Stock extends StatelessWidget {
-  const Stock({super.key, required this.products, required this.adjust});
+  const Stock({super.key, required this.products, required this.adjust, required this.language});
   final List<Product> products;
   final Future<void> Function(Product, int) adjust;
+  final ProductNameLanguage language;
   @override
   Widget build(BuildContext context) {
     final inStockProducts = products
@@ -62,7 +63,7 @@ class Stock extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        p.name,
+                        p.nameFor(language),
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,

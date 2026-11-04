@@ -38,6 +38,7 @@ dependencies:
   cloud_firestore: ^7.1.0
   # ESC/POS thermal receipts via Bluetooth (BLE/RFCOMM), USB, or network.
   thermal_printer_flutter: ^2.1.0
+  image: ^4.12.0
   pdf: ^3.11.3
   printing: ^5.14.2
   csv: ^8.0.0

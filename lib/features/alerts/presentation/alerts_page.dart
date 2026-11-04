@@ -4,8 +4,10 @@ class Alerts extends StatelessWidget {
   const Alerts({
     super.key,
     required this.products,
+    required this.language,
   });
   final List<Product> products;
+  final ProductNameLanguage language;
   @override
   Widget build(BuildContext context) {
     final alerts = products.where((p) => p.low).toList();
@@ -71,7 +73,7 @@ class Alerts extends StatelessWidget {
                 ],
               ),
               title: Text(
-                '${p.name} is running low',
+                '${p.nameFor(language)} is running low',
                 style: const TextStyle(
                   color: Color(0xFF3D2A00),
                   fontWeight: FontWeight.w700,

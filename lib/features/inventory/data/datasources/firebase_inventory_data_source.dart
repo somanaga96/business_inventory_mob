@@ -98,12 +98,16 @@ class FirebaseInventoryDataSource {
     required int quantity,
     required int threshold,
     String? imageUrl,
+    String? tamilName,
+    String? marathiName,
   }) async {
     final inventory = _firestore.collection('inventory').doc();
     final batch = _firestore.batch();
     final image = imageUrl?.trim();
     batch.set(inventory, {
       'name': name,
+      if (tamilName?.trim().isNotEmpty ?? false) 'tamilName': tamilName!.trim(),
+      if (marathiName?.trim().isNotEmpty ?? false) 'marathiName': marathiName!.trim(),
       'category': category,
       'quantity': quantity,
       'minStock': threshold,
@@ -167,10 +171,14 @@ class FirebaseInventoryDataSource {
     required double cost,
     required int threshold,
     String? imageUrl,
+    String? tamilName,
+    String? marathiName,
   }) async {
     final image = imageUrl?.trim();
     final productData = {
       'name': name,
+      'tamilName': tamilName?.trim() ?? '',
+      'marathiName': marathiName?.trim() ?? '',
       'category': category,
       'minStock': threshold,
       'imageUrl': image,

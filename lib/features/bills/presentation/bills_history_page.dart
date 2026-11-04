@@ -4,14 +4,28 @@ import 'package:excel_plus/excel_plus.dart' as xlsx;
 import 'package:pdf/widgets.dart' as pw;
 
 class BillsHistory extends StatefulWidget {
-  const BillsHistory({super.key, required this.controller});
+  const BillsHistory({
+    super.key,
+    required this.controller,
+    required this.products,
+    required this.language,
+  });
   final InventoryController controller;
+  final List<Product> products;
+  final ProductNameLanguage language;
   @override
   State<BillsHistory> createState() => _BillsHistoryState();
 }
 
 class _BillsHistoryState extends State<BillsHistory> {
   DateTime selectedDate = DateTime.now();
+  String productName(Map<String, dynamic> data) {
+    final productId = data['productId']?.toString();
+    for (final product in widget.products) {
+      if (product.id == productId) return product.nameFor(widget.language);
+    }
+    return '${data['productName'] ?? 'Product'}';
+  }
   bool sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
   String dateLabel(DateTime d) =>
@@ -56,7 +70,7 @@ class _BillsHistoryState extends State<BillsHistory> {
           orderDate == null ? '' : _timeLabel(orderDate),
           customer.isEmpty ? 'Not specified' : customer,
           city.isEmpty ? 'Not specified' : city,
-          '${data['productName'] ?? 'Product'}',
+          productName(data),
           quantity.toInt(),
           mrp,
           price,
@@ -214,7 +228,7 @@ class _BillsHistoryState extends State<BillsHistory> {
           firstItem && orderDate != null ? _timeLabel(orderDate) : '',
           firstItem ? (customer.isEmpty ? 'Not specified' : customer) : '',
           firstItem ? (city.isEmpty ? 'Not specified' : city) : '',
-          '${data['productName'] ?? 'Product'}',
+          productName(data),
           quantity.toInt(),
           'Rs ${price.toStringAsFixed(2)}',
           'Rs ${(quantity * price).toStringAsFixed(2)}',
@@ -417,7 +431,7 @@ class _BillsHistoryState extends State<BillsHistory> {
                               (data['mrp'] as num?)?.toDouble() ?? price;
                           return pw.TableRow(
                             children: [
-                              tableCell('${data['productName'] ?? 'Product'}'),
+                              tableCell(productName(data)),
                               tableCell(
                                 '${quantity.toInt()}',
                                 alignment: pw.Alignment.centerRight,
@@ -513,21 +527,12 @@ class _BillsHistoryState extends State<BillsHistory> {
       final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
       final amount = quantity * price;
       total += amount;
-      bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: '${data['productName'] ?? 'Product'}',
-            width: 4,
-            styles: ThermalReceiptPrinter.normalStyle,
-          ),
-          PosColumn(
-            text: '${quantity.toInt()} x ${price.toStringAsFixed(2)} = '
-                '${amount.toStringAsFixed(2)}',
-            width: 8,
-            styles: ThermalReceiptPrinter.rightStyle,
-          ),
-        ]),
-      );
+      bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
+        generator,
+        name: productName(data),
+        amount: '${quantity.toInt()} x ${price.toStringAsFixed(2)} = '
+            '${amount.toStringAsFixed(2)}',
+      ));
     }
     bytes.addAll(generator.hr());
     bytes.addAll(
@@ -598,7 +603,7 @@ class _BillsHistoryState extends State<BillsHistory> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text('${data['productName'] ?? 'Product'}'),
+                          child: Text(productName(data)),
                         ),
                         SizedBox(
                           width: 70,
@@ -1027,7 +1032,7 @@ class _BillsHistoryState extends State<BillsHistory> {
                   final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
                   final mrp = (data['mrp'] as num?)?.toDouble() ?? price;
                   return ListTile(
-                    title: Text('${data['productName'] ?? 'Product'}'),
+                    title: Text(productName(data)),
                     subtitle: Text(
                       'Order ID: ${entry.key}\nQty: ${qty.toInt()}  ·  MRP: ₹${mrp.toStringAsFixed(2)}  ·  Price: ₹${price.toStringAsFixed(2)}',
                     ),
