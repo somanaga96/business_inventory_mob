@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/services/thermal_receipt_printer.dart';
@@ -187,7 +192,8 @@ class _InventoryHomeState extends State<InventoryHome> {
         ),
         drawer: Drawer(
           child: SafeArea(
-            child: Column(
+            child: ListView(
+              padding: EdgeInsets.zero,
               children: [
                 const ListTile(
                   leading: CircleAvatar(
@@ -255,6 +261,18 @@ class _InventoryHomeState extends State<InventoryHome> {
                     );
                   },
                 ),
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Backup products'),
+                  subtitle: const Text('Export products as JSON'),
+                  onTap: exportBackup,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.restore_outlined),
+                  title: const Text('Restore products'),
+                  subtitle: const Text('Add missing products from JSON'),
+                  onTap: restoreProducts,
+                ),
                 const Divider(),
                 ...[
                   'Overview',
@@ -318,6 +336,78 @@ class _InventoryHomeState extends State<InventoryHome> {
   );
 
   void openNewBill() => setState(() => tab = 5);
+
+  Future<void> exportBackup() async {
+    try {
+      final backup = await controller.createBackup();
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent('  ').convert(backup))),
+              mimeType: 'application/json',
+            ),
+          ],
+          fileNameOverrides: ['inventorypro_backup_$stamp.json'],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not create the backup. Check your Firestore access.')),
+        );
+      }
+    }
+  }
+
+  Future<void> restoreProducts() async {
+    try {
+      final picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      final bytes = picked.isEmpty ? null : await picked.first.readAsBytes();
+      if (bytes == null) return;
+      final decoded = jsonDecode(utf8.decode(bytes));
+      final collections = decoded is Map ? decoded['collections'] : null;
+      final inventory = collections is Map ? collections['inventory'] : null;
+      if (inventory is! List) throw const FormatException('Not an InventoryPro product backup.');
+      final products = inventory
+          .whereType<Map>()
+          .map((value) => Map<String, dynamic>.from(value))
+          .toList();
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Restore products?'),
+          content: Text(
+            '${products.length} product records found. Existing products will be skipped and never overwritten.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore')),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+      final restored = await controller.restoreMissingProducts(products);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$restored new product${restored == 1 ? '' : 's'} restored. Existing products were skipped.')),
+        );
+      }
+    } on FormatException catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not restore products. Check the JSON file and Firestore access.')),
+        );
+      }
+    }
+  }
 
   Future<void> addProduct() async {
     final name = TextEditingController(),

@@ -15,6 +15,9 @@ class InventoryController {
       _dataSource.watchTransactions();
   Stream<QuerySnapshot<Map<String, dynamic>>> get purchases =>
       _dataSource.watchPurchases();
+  Future<Map<String, dynamic>> createBackup() => _dataSource.createBackup();
+  Future<int> restoreMissingProducts(List<Map<String, dynamic>> products) =>
+      _dataSource.restoreMissingProducts(products);
   Stream<QuerySnapshot<Map<String, dynamic>>> transactionsForDate(
     DateTime date,
   ) => _dataSource.watchTransactionsForDate(date);

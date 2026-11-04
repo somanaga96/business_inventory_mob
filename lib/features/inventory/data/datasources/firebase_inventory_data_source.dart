@@ -23,6 +23,68 @@ class FirebaseInventoryDataSource {
       .where('type', isEqualTo: 'Purchase')
       .snapshots();
 
+  /// Exports the business data stored by this app in a portable JSON shape.
+  /// Only collections allowed by the signed-in user's Firestore rules can be
+  /// included in a client-side backup.
+  Future<Map<String, dynamic>> createBackup() async {
+    final results = await Future.wait([
+      _firestore.collection('inventory').get(),
+    ]);
+    Map<String, dynamic> documentData(
+      QueryDocumentSnapshot<Map<String, dynamic>> document,
+    ) => {
+      'id': document.id,
+      ..._jsonSafe(document.data()),
+    };
+    return {
+      'format': 'inventorypro.firestore-backup',
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'collections': {
+        'inventory': results[0].docs.map(documentData).toList(),
+      },
+    };
+  }
+
+  /// Restores only products whose document IDs are not already in inventory.
+  /// Existing products are deliberately left unchanged.
+  Future<int> restoreMissingProducts(List<Map<String, dynamic>> products) async {
+    var restored = 0;
+    WriteBatch? batch;
+    var writesInBatch = 0;
+    for (final product in products) {
+      final id = '${product['id'] ?? ''}'.trim();
+      if (id.isEmpty) continue;
+      final reference = _firestore.collection('inventory').doc(id);
+      if ((await reference.get()).exists) continue;
+      batch ??= _firestore.batch();
+      final data = Map<String, dynamic>.from(product)..remove('id');
+      batch.set(reference, data);
+      restored++;
+      writesInBatch++;
+      if (writesInBatch == 450) {
+        await batch.commit();
+        batch = null;
+        writesInBatch = 0;
+      }
+    }
+    if (batch != null) await batch.commit();
+    return restored;
+  }
+
+  dynamic _jsonSafe(dynamic value) {
+    if (value is Timestamp) return value.toDate().toIso8601String();
+    if (value is GeoPoint) {
+      return {'latitude': value.latitude, 'longitude': value.longitude};
+    }
+    if (value is DocumentReference) return value.path;
+    if (value is Map) {
+      return value.map((key, nested) => MapEntry('$key', _jsonSafe(nested)));
+    }
+    if (value is Iterable) return value.map(_jsonSafe).toList();
+    return value;
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> watchTransactionsForDate(
     DateTime date,
   ) {
