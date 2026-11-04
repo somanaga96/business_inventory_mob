@@ -157,8 +157,10 @@ class FirebaseInventoryDataSource {
       'imageUrl': product.imageUrl,
       'quantity': delta.abs(),
       'change': delta,
-      'type': delta >= 0 ? 'Stock in' : 'Stock out',
+      'type': 'Adjustment',
+      'unitPrice': product.cost,
       'inventoryAfter': after,
+      'transactionDate': Timestamp.fromDate(DateTime.now()),
       'createdAt': FieldValue.serverTimestamp(),
     });
     await batch.commit();
@@ -207,18 +209,28 @@ class FirebaseInventoryDataSource {
   }) async {
     final stockIn = type == 'Purchase' || type == 'Return';
     final change = stockIn ? quantity : -quantity;
-    final after = (product.quantity + change).clamp(0, 1 << 31);
     final isPurchase = type == 'Purchase';
-    final nextCost = isPurchase
-        ? ((product.quantity * product.cost) + (quantity * unitPrice)) / after
-        : product.cost;
-    final batch = _firestore.batch();
-    batch.update(_firestore.collection('inventory').doc(product.id), {
-      'quantity': after,
-      'price': nextCost,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    batch.set(_firestore.collection('transactions').doc(), {
+    final inventory = _firestore.collection('inventory').doc(product.id);
+    final transaction = _firestore.collection('transactions').doc();
+    await _firestore.runTransaction((dbTransaction) async {
+      final snapshot = await dbTransaction.get(inventory);
+      if (!snapshot.exists) throw StateError('Product no longer exists.');
+      final data = snapshot.data() ?? {};
+      final currentQuantity = (data['quantity'] as num?)?.toInt() ?? 0;
+      final currentCost = (data['price'] as num?)?.toDouble() ?? 0;
+      if (!stockIn && quantity > currentQuantity) {
+        throw StateError('Cannot remove more than current stock.');
+      }
+      final after = currentQuantity + change;
+      final nextCost = isPurchase
+          ? ((currentQuantity * currentCost) + (quantity * unitPrice)) / after
+          : currentCost;
+      dbTransaction.update(inventory, {
+        'quantity': after,
+        'price': nextCost,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      dbTransaction.set(transaction, {
       'productId': product.id,
       'productName': product.name,
       'imageUrl': product.imageUrl,
@@ -236,8 +248,8 @@ class FirebaseInventoryDataSource {
       'inventoryAfter': after,
       'transactionDate': Timestamp.fromDate(date),
       'createdAt': FieldValue.serverTimestamp(),
+      });
     });
-    await batch.commit();
   }
 
   /// Saves every line of one bill in a single Firestore batch.
@@ -248,14 +260,23 @@ class FirebaseInventoryDataSource {
     required String billNumber,
     required DateTime date,
   }) async {
-    final batch = _firestore.batch();
-    for (final item in items) {
-      final after = (item.product.quantity - item.quantity).clamp(0, 1 << 31);
-      batch.update(_firestore.collection('inventory').doc(item.product.id), {
+    await _firestore.runTransaction((dbTransaction) async {
+      for (final item in items) {
+      final inventory = _firestore.collection('inventory').doc(item.product.id);
+      final snapshot = await dbTransaction.get(inventory);
+      if (!snapshot.exists) throw StateError('A product no longer exists.');
+      final data = snapshot.data() ?? {};
+      final currentQuantity = (data['quantity'] as num?)?.toInt() ?? 0;
+      final currentCost = (data['price'] as num?)?.toDouble() ?? item.product.cost;
+      if (item.quantity > currentQuantity) {
+        throw StateError('${item.product.name} does not have enough stock.');
+      }
+      final after = currentQuantity - item.quantity;
+      dbTransaction.update(inventory, {
         'quantity': after,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      batch.set(_firestore.collection('transactions').doc(), {
+      dbTransaction.set(_firestore.collection('transactions').doc(), {
         'productId': item.product.id,
         'productName': item.product.name,
         'imageUrl': item.product.imageUrl,
@@ -264,7 +285,7 @@ class FirebaseInventoryDataSource {
         'type': 'Sale',
         'recordType': 'inventory_transaction',
         'unitPrice': item.unitPrice,
-        'mrp': item.product.cost,
+        'mrp': currentCost,
         'party': party,
         'city': city,
         'note': billNumber,
@@ -272,8 +293,8 @@ class FirebaseInventoryDataSource {
         'transactionDate': Timestamp.fromDate(date),
         'createdAt': FieldValue.serverTimestamp(),
       });
-    }
-    await batch.commit();
+      }
+    });
   }
 
   /// Corrects an existing sale and returns stock for any reduced quantity.

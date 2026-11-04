@@ -73,6 +73,7 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                 purchaseEntries++;
                 break;
               case 'damage':
+              case 'stolen':
                 stockLoss += cost * quantity;
                 break;
             }

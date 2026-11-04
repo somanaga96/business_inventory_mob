@@ -41,24 +41,26 @@ class _PurchasePageState extends State<PurchasePage> {
 
   Future<void> save() async {
     final amount = int.tryParse(quantity.text) ?? 0;
-    final buyPrice = double.tryParse(price.text);
+    // Damaged stock is valued at the product's current cost, so recording a
+    // loss does not require entering a purchase price.
+    final unitPrice = type == 'Damage' || type == 'Stolen'
+        ? (selected?.cost ?? 0)
+        : double.tryParse(price.text);
     final currentProduct = selected == null
         ? null
         : widget.products.where((p) => p.id == selected!.id).firstOrNull;
     if (currentProduct == null ||
         amount <= 0 ||
-        buyPrice == null ||
-        buyPrice <= 0) {
+        unitPrice == null ||
+        unitPrice <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Product, purchase quantity, and buy price are required.',
-          ),
-        ),
+        SnackBar(content: Text(type == 'Damage' || type == 'Stolen'
+            ? 'Product and ${type.toLowerCase()} quantity are required.'
+            : 'Product, purchase quantity, and buy price are required.')),
       );
       return;
     }
-    final stockOut = type == 'Sale' || type == 'Damage';
+    final stockOut = type == 'Sale' || type == 'Damage' || type == 'Stolen';
     if (stockOut && amount > currentProduct.quantity) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cannot remove more than current stock.')),
@@ -71,7 +73,7 @@ class _PurchasePageState extends State<PurchasePage> {
         currentProduct,
         amount,
         type,
-        buyPrice,
+        unitPrice,
         party.text.trim(),
         city.text.trim(),
         note.text.trim(),
@@ -82,8 +84,19 @@ class _PurchasePageState extends State<PurchasePage> {
         note.clear();
         party.clear();
         city.clear();
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Purchase recorded.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(type == 'Damage'
+              ? 'Damage / loss recorded.'
+              : type == 'Stolen'
+              ? 'Stolen stock recorded.'
+              : 'Purchase recorded.'),
+        ));
+      }
+    } on StateError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message.toString())),
+        );
       }
     } finally {
       if (mounted) setState(() => saving = false);
@@ -106,6 +119,31 @@ class _PurchasePageState extends State<PurchasePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  decoration: const InputDecoration(
+                    labelText: 'Stock movement',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Purchase',
+                      child: Text('Purchase / stock in'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Damage',
+                      child: Text('Damage / loss'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Stolen',
+                      child: Text('Stolen stock'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => type = value);
+                  },
+                ),
+                const SizedBox(height: 14),
                 DropdownButtonFormField<Product>(
                   initialValue: selectedValue,
                   isExpanded: true,
@@ -161,13 +199,15 @@ class _PurchasePageState extends State<PurchasePage> {
                 TextField(
                   controller: quantity,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Purchase quantity *',
+                  decoration: InputDecoration(
+                    labelText: type == 'Damage' || type == 'Stolen'
+                        ? '${type == 'Stolen' ? 'Stolen' : 'Damaged'} quantity *'
+                        : 'Purchase quantity *',
                     border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 14),
-                TextField(
+                if (type != 'Damage' && type != 'Stolen') TextField(
                   controller: price,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -181,7 +221,7 @@ class _PurchasePageState extends State<PurchasePage> {
                     border: const OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 14),
+                if (type != 'Damage' && type != 'Stolen') const SizedBox(height: 14),
                 TextField(
                   controller: party,
                   decoration: const InputDecoration(
@@ -210,7 +250,7 @@ class _PurchasePageState extends State<PurchasePage> {
                   },
                   icon: const Icon(Icons.calendar_today_outlined),
                   label: Text(
-                    'Purchase date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
+                    '${type == 'Damage' ? 'Damage' : type == 'Stolen' ? 'Stolen' : 'Purchase'} date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
                   ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),

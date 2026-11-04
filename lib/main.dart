@@ -9,6 +9,7 @@ import 'features/alerts/presentation/alerts_page.dart';
 import 'features/bills/presentation/bills_history_page.dart';
 import 'features/bills/presentation/bills_page.dart';
 import 'features/dashboard/presentation/dashboard_page.dart';
+import 'features/history/presentation/history_page.dart';
 import 'features/inventory/application/controllers/inventory_controller.dart';
 import 'features/inventory/domain/models/product.dart';
 import 'features/inventory/presentation/stock_page.dart';
@@ -142,6 +143,7 @@ class _InventoryHomeState extends State<InventoryHome> {
         ),
         Alerts(products: products, language: productLanguage),
         BusinessSummary(controller: controller),
+        HistoryPage(controller: controller),
       ];
       return Scaffold(
         appBar: AppBar(
@@ -264,6 +266,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Order history',
                   'Alerts',
                   'Business summary',
+                  'History',
                 ].asMap().entries.map(
                   (entry) => ListTile(
                     selected: tab == entry.key,
@@ -279,6 +282,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                         Icons.receipt_long,
                         Icons.warning_amber_outlined,
                         Icons.insights_outlined,
+                        Icons.history_outlined,
                       ][entry.key],
                       color: tab == entry.key ? primary : null,
                     ),
@@ -294,7 +298,7 @@ class _InventoryHomeState extends State<InventoryHome> {
           ),
         ),
         body: SafeArea(child: views[tab]),
-        floatingActionButton: tab == 3 || tab == 5 || tab == 8
+        floatingActionButton: tab == 3 || tab == 5 || tab == 8 || tab == 9
             ? null
             : SizedBox(
                 width: billButtonWidth,

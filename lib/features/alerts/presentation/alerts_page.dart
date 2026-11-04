@@ -10,6 +10,14 @@ class Alerts extends StatelessWidget {
   final ProductNameLanguage language;
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
+    final alertSurface = isDark
+        ? const Color(0xFF1A1F2A)
+        : const Color(0xFFFFF8E7);
+    final imageSurface = isDark
+        ? const Color(0xFF252B38)
+        : const Color(0xFFFFE6A7);
     final alerts = products.where((p) => p.low).toList();
     return ResponsivePage(
       children: [
@@ -30,7 +38,16 @@ class Alerts extends StatelessWidget {
           ),
         ...alerts.map(
           (p) => Card(
-            color: const Color(0xFFFFF8E7),
+            color: alertSurface,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(
+                color: isDark
+                    ? const Color(0xFFE59A00).withValues(alpha: .35)
+                    : const Color(0xFFE59A00).withValues(alpha: .28),
+              ),
+            ),
             child: ListTile(
               leading: Stack(
                 clipBehavior: Clip.none,
@@ -40,29 +57,35 @@ class Alerts extends StatelessWidget {
                     height: 46,
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFE6A7),
+                      color: imageSurface,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: p.imageUrl == null || p.imageUrl!.isEmpty
-                        ? const Icon(
+                        ? Icon(
                             Icons.inventory_2_outlined,
-                            color: Color(0xFF6B4A00),
+                          color: isDark
+                              ? const Color(0xFFFFD56A)
+                              : const Color(0xFF6B4A00),
                           )
                         : Image.network(
                             p.imageUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const Icon(
+                            errorBuilder: (_, _, _) => Icon(
                               Icons.inventory_2_outlined,
-                              color: Color(0xFF6B4A00),
+                            color: isDark
+                                ? const Color(0xFFFFD56A)
+                                : const Color(0xFF6B4A00),
                             ),
                           ),
                   ),
-                  const Positioned(
+                  Positioned(
                     right: -5,
                     bottom: -5,
                     child: CircleAvatar(
                       radius: 11,
-                      backgroundColor: Color(0xFFFFF8E7),
+                      backgroundColor: isDark
+                          ? const Color(0xFF1A1F2A)
+                          : alertSurface,
                       child: Icon(
                         Icons.warning_amber_rounded,
                         size: 18,
@@ -74,14 +97,14 @@ class Alerts extends StatelessWidget {
               ),
               title: Text(
                 '${p.nameFor(language)} is running low',
-                style: const TextStyle(
-                  color: Color(0xFF3D2A00),
+                style: TextStyle(
+                  color: scheme.onSurface,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               subtitle: Text(
                 '${p.quantity} left · reorder level ${p.minStock}',
-                style: const TextStyle(color: Color(0xFF684F1B)),
+                style: TextStyle(color: scheme.onSurfaceVariant),
               ),
             ),
           ),

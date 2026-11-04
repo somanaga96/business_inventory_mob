@@ -431,15 +431,18 @@ class InventorySummaryMetric extends StatelessWidget {
             const Spacer(),
             Text(
               'Rs ${value.toStringAsFixed(0)}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: ink,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
-            const Text(
+            Text(
               'Inventory',
-              style: TextStyle(fontSize: 12, color: Color(0xFF7C8AA3)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -481,17 +484,20 @@ class Metric extends StatelessWidget {
             const Spacer(),
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: ink,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF7C8AA3)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

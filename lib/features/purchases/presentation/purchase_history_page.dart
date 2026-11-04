@@ -38,6 +38,12 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   double _total(Map<String, dynamic> d) => _qty(d) * _price(d);
   bool _isPurchase(Map<String, dynamic> d) =>
       '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'purchase';
+  bool _isDamage(Map<String, dynamic> d) =>
+      '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'damage';
+  bool _isPurchaseOrDamage(Map<String, dynamic> d) =>
+      _isPurchase(d) || _isDamage(d);
+  String _movementLabel(Map<String, dynamic> d) =>
+      _isDamage(d) ? 'Damage / loss' : 'Purchase';
   String _short(String value, int maxLength) =>
       value.length <= maxLength ? value : '${value.substring(0, maxLength - 1)}.';
 
@@ -63,7 +69,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     final date = _when(d);
     final bytes = <int>[];
     bytes.addAll(g.text('INVENTORYPRO', styles: ThermalReceiptPrinter.centerBoldStyle));
-    bytes.addAll(g.text('Purchase receipt', styles: ThermalReceiptPrinter.centerStyle));
+    bytes.addAll(g.text('${_movementLabel(d)} receipt', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
     bytes.addAll(g.text('Product: ${d['productName'] ?? 'Product'}', styles: ThermalReceiptPrinter.normalStyle));
     bytes.addAll(g.text('Date: ${date == null ? '-' : _date(date)}  Time: ${_time(d)}', styles: ThermalReceiptPrinter.normalStyle));
@@ -91,7 +97,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     final sum = docs.fold<double>(0, (v, doc) => v + _total(doc.data()));
     final bytes = <int>[];
     bytes.addAll(g.text('INVENTORYPRO', styles: ThermalReceiptPrinter.centerBoldStyle));
-    bytes.addAll(g.text('Purchase summary', styles: ThermalReceiptPrinter.centerStyle));
+    bytes.addAll(g.text('Purchase & damage summary', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.text('${_date(from)} - ${_date(to)}', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
     bytes.addAll(g.row([
@@ -144,11 +150,11 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   }
 
   List<List<dynamic>> _rows(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) => [
-    ['Date', 'Time', 'Product', 'Quantity', 'Buy price', 'Total', 'Supplier', 'City/Village', 'Note'],
+    ['Date', 'Time', 'Type', 'Product', 'Quantity', 'Unit cost', 'Total', 'Supplier', 'City/Village', 'Note'],
     ...docs.map((doc) {
       final d = doc.data();
       final when = _when(d);
-      return [when == null ? '' : _date(when), _time(d), '${d['productName'] ?? ''}', _qty(d), _price(d), _total(d), '${d['party'] ?? ''}', '${d['city'] ?? ''}', '${d['note'] ?? ''}'];
+      return [when == null ? '' : _date(when), _time(d), _movementLabel(d), '${d['productName'] ?? ''}', _qty(d), _price(d), _total(d), '${d['party'] ?? ''}', '${d['city'] ?? ''}', '${d['note'] ?? ''}'];
     }),
   ];
 
@@ -196,11 +202,11 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
       final docs = (snapshot.data?.docs ?? []).where((doc) {
         final d = doc.data();
         final search = '${d['productName'] ?? ''} ${d['party'] ?? ''} ${d['note'] ?? ''}'.toLowerCase();
-        return _isPurchase(d) && search.contains(query.toLowerCase());
+        return _isPurchaseOrDamage(d) && search.contains(query.toLowerCase());
       }).toList()..sort((a, b) => (_when(b.data()) ?? DateTime(0)).compareTo(_when(a.data()) ?? DateTime(0)));
       final sum = docs.fold<double>(0, (v, doc) => v + _total(doc.data()));
       return ResponsivePage(children: [
-        const Text('Purchase history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
+        const Text('Purchase & damage history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const SizedBox(height: 18),
         Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => _pick(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('From ${_date(from)}'))), const SizedBox(width: 10), Expanded(child: OutlinedButton.icon(onPressed: () => _pick(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('To ${_date(to)}')))]),
@@ -209,19 +215,19 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
         const SizedBox(height: 14),
         TextField(onChanged: (v) => setState(() => query = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search product, supplier or note', border: OutlineInputBorder())),
         const SizedBox(height: 14),
-        Card(child: ListTile(leading: const Icon(Icons.shopping_bag_outlined, color: primary), title: Text('${docs.length} purchase ${docs.length == 1 ? 'entry' : 'entries'}'), trailing: Text('Rs ${sum.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)))),
+        Card(child: ListTile(leading: const Icon(Icons.shopping_bag_outlined, color: primary), title: Text('${docs.length} movement ${docs.length == 1 ? 'entry' : 'entries'}'), trailing: Text('Rs ${sum.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)))),
         const SizedBox(height: 10),
         if (snapshot.hasError) const Card(child: ListTile(leading: Icon(Icons.error_outline), title: Text('Unable to load purchase history.'))),
         if (!snapshot.hasData) const Center(child: Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator())),
-        if (snapshot.hasData && docs.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No purchases in this date range'), subtitle: Text('Change the dates or record a purchase from the Purchase tab.'))),
+        if (snapshot.hasData && docs.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No purchases or damage in this date range'), subtitle: Text('Change the dates or record a stock movement from the Purchase tab.'))),
         ...docs.map((doc) {
           final d = doc.data(); final expanded = expandedId == doc.id; final note = '${d['note'] ?? ''}'.trim();
           return Card(margin: const EdgeInsets.only(bottom: 10), child: Column(children: [
             ListTile(onTap: () => setState(() => expandedId = expanded ? null : doc.id), leading: const CircleAvatar(backgroundColor: Color(0xFFDCF8E9), child: Icon(Icons.south_west, color: Color(0xFF168B57))), title: Text('${d['productName'] ?? 'Product'}', style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text('${_date(_when(d) ?? DateTime.now())} • ${_time(d)}'), trailing: Text('Rs ${_total(d).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800))),
             if (expanded) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Divider(), Text('Quantity: ${_qty(d)}'), Text('Buy price: Rs ${_price(d).toStringAsFixed(2)}'), Text('Total: Rs ${_total(d).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              if ('${d['party'] ?? ''}'.trim().isNotEmpty) Text('Supplier: ${d['party']}'), if ('${d['city'] ?? ''}'.trim().isNotEmpty) Text('City / Village: ${d['city']}'), if (note.isNotEmpty) Text('Note: $note'), if (d['inventoryAfter'] != null) Text('Stock after purchase: ${d['inventoryAfter']}'),
-              const SizedBox(height: 12), SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => _printOne(d), icon: const Icon(Icons.print_outlined), label: const Text('Print purchase'))),
+              const Divider(), Text('Type: ${_movementLabel(d)}'), Text('Quantity: ${_qty(d)}'), Text('${_isDamage(d) ? 'Loss value' : 'Buy price'}: Rs ${_price(d).toStringAsFixed(2)}'), Text('Total: Rs ${_total(d).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              if ('${d['party'] ?? ''}'.trim().isNotEmpty) Text('Supplier: ${d['party']}'), if ('${d['city'] ?? ''}'.trim().isNotEmpty) Text('City / Village: ${d['city']}'), if (note.isNotEmpty) Text('Note: $note'), if (d['inventoryAfter'] != null) Text('Stock after ${_isDamage(d) ? 'damage' : 'purchase'}: ${d['inventoryAfter']}'),
+              const SizedBox(height: 12), SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => _printOne(d), icon: const Icon(Icons.print_outlined), label: Text('Print ${_movementLabel(d).toLowerCase()}'))),
             ])),
           ]));
         }),
