@@ -104,20 +104,24 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     bytes.addAll(g.text('Purchase & damage summary', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.text('${_date(from)} - ${_date(to)}', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
-    bytes.addAll(g.text('Product | Qty x Rate = Total', styles: ThermalReceiptPrinter.boldStyle));
+    bytes.addAll(g.row([
+      PosColumn(text: 'Product', width: 6, styles: ThermalReceiptPrinter.boldStyle),
+      PosColumn(
+        text: 'Qty x Rate = Total',
+        width: 6,
+        styles: ThermalReceiptPrinter.rightBoldStyle,
+      ),
+    ]));
     bytes.addAll(g.hr());
     for (var index = 0; index < docs.length; index++) {
       final doc = docs[index];
       final d = doc.data();
-      final title = '${index + 1}. ${_short('${d['productName'] ?? 'Product'}', 12)}';
-      final amount = '${_qty(d)}x${_price(d).toStringAsFixed(2)}=${_total(d).toStringAsFixed(2)}';
-      // Keep the complete row within the compact printer's 32-character
-      // width. Rendering it as one unit prevents later fields from shifting.
-      final gap = (32 - title.length - amount.length).clamp(1, 6).toInt();
-      bytes.addAll(await ThermalReceiptPrinter.receiptText(
+      final title = '${index + 1}. ${_short('${d['productName'] ?? 'Product'}', 18)}';
+      final amount = '${_qty(d)} x ${_price(d).toStringAsFixed(2)} = ${_total(d).toStringAsFixed(2)}';
+      bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
         g,
-        '$title${' ' * gap}$amount',
-        styles: ThermalReceiptPrinter.normalStyle,
+        name: title,
+        amount: amount,
       ));
     }
     bytes.addAll(g.hr());
