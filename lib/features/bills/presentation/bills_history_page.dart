@@ -552,9 +552,25 @@ class _BillsHistoryState extends State<BillsHistory> {
     String billNumber,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) async {
-    final bytes = await _receiptBytes(billNumber, docs);
-    if (!context.mounted) return;
-    await ThermalReceiptPrinter.print(context, bytes);
+    if (docs.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This order has no items to print.')),
+        );
+      }
+      return;
+    }
+    try {
+      final bytes = await _receiptBytes(billNumber, List.of(docs));
+      if (!context.mounted) return;
+      await ThermalReceiptPrinter.print(context, bytes);
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not prepare this order for printing: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _editTodayOrder(
@@ -610,7 +626,10 @@ class _BillsHistoryState extends State<BillsHistory> {
                           child: TextField(
                             controller: quantities[index],
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'Qty'),
+                            decoration: const InputDecoration(
+                              labelText: 'Qty',
+                              helperText: '0 removes',
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -623,6 +642,20 @@ class _BillsHistoryState extends State<BillsHistory> {
                             ),
                             decoration: const InputDecoration(labelText: 'Price'),
                           ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove item from order',
+                          onPressed: () {
+                            quantities[index].text = '0';
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Item will be removed when you save changes.',
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.delete_outline),
                         ),
                       ],
                     ),
@@ -652,10 +685,12 @@ class _BillsHistoryState extends State<BillsHistory> {
         final data = docs[index].data();
         final quantity = int.tryParse(quantities[index].text) ?? 0;
         final price = double.tryParse(prices[index].text) ?? -1;
-        if (quantity <= 0 || price < 0) {
+        if (quantity < 0 || (quantity > 0 && price < 0)) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Enter a valid quantity and price.')),
+              const SnackBar(
+                content: Text('Enter a valid quantity and price.'),
+              ),
             );
           }
           customer.dispose();

@@ -75,6 +75,7 @@ class _InventoryHomeState extends State<InventoryHome> {
   ProductNameLanguage productLanguage = ProductNameLanguage.english;
   late final InventoryController controller;
   bool firebaseReady = false;
+  bool productNumberMigrationStarted = false;
   final sample = const [
     Product(
       id: 'egg',
@@ -111,6 +112,15 @@ class _InventoryHomeState extends State<InventoryHome> {
     stream: firebaseReady ? controller.products : null,
     builder: (context, snapshot) {
       final products = snapshot.data ?? sample;
+      if (firebaseReady &&
+          snapshot.hasData &&
+          !productNumberMigrationStarted &&
+          products.any((product) => product.productNumber == null)) {
+        productNumberMigrationStarted = true;
+        controller.assignMissingProductNumbers(products).catchError((_) {
+          productNumberMigrationStarted = false;
+        });
+      }
       final screenWidth = MediaQuery.sizeOf(context).width;
       final screenHeight = MediaQuery.sizeOf(context).height;
       final billButtonWidth = screenWidth * .90;
@@ -316,7 +326,7 @@ class _InventoryHomeState extends State<InventoryHome> {
           ),
         ),
         body: SafeArea(child: views[tab]),
-        floatingActionButton: tab == 3 || tab == 5 || tab == 8 || tab == 9
+        floatingActionButton: tab == 1 || tab == 3 || tab == 5 || tab == 8 || tab == 9
             ? null
             : SizedBox(
                 width: billButtonWidth,
@@ -353,7 +363,7 @@ class _InventoryHomeState extends State<InventoryHome> {
         ),
       );
     } catch (_) {
-      if (mounted) {
+       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not create the backup. Check your Firestore access.')),
         );

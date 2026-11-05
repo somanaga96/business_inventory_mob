@@ -27,7 +27,12 @@ class _ProductsState extends State<Products> {
     final visible = widget.products.where((p) {
       final search = '${p.name} ${p.tamilName ?? ''} ${p.marathiName ?? ''} ${p.category}'.toLowerCase();
       return (category == null || p.category == category) && search.contains(query.toLowerCase());
-    });
+    }).toList()
+      ..sort((a, b) {
+        final aNumber = a.productNumber ?? 1 << 31;
+        final bNumber = b.productNumber ?? 1 << 31;
+        return aNumber.compareTo(bNumber);
+      });
     return ResponsivePage(
     children: [
       Row(
@@ -64,19 +69,20 @@ class _ProductsState extends State<Products> {
         onChanged: (value) => setState(() => category = value),
       ),
       const SizedBox(height: 12),
-      ...visible.map(
-        (p) => ProductTile(
-          product: p,
+      ...visible.asMap().entries.map(
+        (entry) => ProductTile(
+          product: entry.value,
+          number: entry.value.productNumber,
           language: widget.language,
           actions: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                onPressed: () => widget.edit(p),
+                onPressed: () => widget.edit(entry.value),
                 icon: const Icon(Icons.edit_outlined),
               ),
               IconButton(
-                onPressed: () => widget.remove(p),
+                onPressed: () => widget.remove(entry.value),
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
               ),
             ],
@@ -89,8 +95,15 @@ class _ProductsState extends State<Products> {
 }
 
 class ProductTile extends StatelessWidget {
-  const ProductTile({super.key, required this.product, required this.language, this.actions});
+  const ProductTile({
+    super.key,
+    required this.product,
+    required this.number,
+    required this.language,
+    this.actions,
+  });
   final Product product;
+  final int? number;
   final ProductNameLanguage language;
   final Widget? actions;
   @override
@@ -106,23 +119,28 @@ class ProductTile extends StatelessWidget {
     child: ListTile(
       contentPadding: const EdgeInsets.all(14),
       leading: Container(
-        width: 48,
-        height: 48,
+        width: 76,
+        height: 76,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: primary.withValues(alpha: .10),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: product.imageUrl == null || product.imageUrl!.isEmpty
-            ? const Icon(Icons.inventory_2_outlined, color: primary)
+            ? const Icon(Icons.inventory_2_outlined, color: primary, size: 30)
             : Image.network(
                 product.imageUrl!,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) =>
-                    const Icon(Icons.inventory_2_outlined, color: primary),
+                    const Icon(Icons.inventory_2_outlined, color: primary, size: 30),
               ),
       ),
-      title: Text(product.nameFor(language), style: const TextStyle(fontWeight: FontWeight.w700)),
+      title: Text(
+        number == null
+            ? 'Assigning number...  ${product.nameFor(language)}'
+            : '#$number  ${product.nameFor(language)}',
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
       subtitle: Text(
         '${product.category} · ₹${product.cost.toStringAsFixed(2)} avg. cost',
       ),

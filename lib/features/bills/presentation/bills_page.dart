@@ -130,9 +130,77 @@ class _BillsState extends State<Bills> {
     setState(() {
       cart[product!.id] = existing + qty;
       prices[product!.id] = salePrice;
+      product = null;
     });
     quantity.text = '1';
     price.clear();
+  }
+
+  Future<void> editCartItem(String productId) async {
+    final item = find(productId);
+    if (item == null) return;
+    final quantityController = TextEditingController(
+      text: (cart[productId] ?? 1).toString(),
+    );
+    final priceController = TextEditingController(
+      text: (prices[productId] ?? item.cost).toStringAsFixed(2),
+    );
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Edit ${item.nameFor(widget.language)}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: quantityController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Quantity',
+                helperText: '${item.quantity} available',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: priceController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Sale price per unit'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Save changes'),
+          ),
+        ],
+      ),
+    );
+    if (save != true || !mounted) return;
+
+    final newQuantity = int.tryParse(quantityController.text) ?? 0;
+    final newPrice = double.tryParse(priceController.text);
+    if (newQuantity <= 0 || newQuantity > item.quantity || newPrice == null || newPrice < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Enter a quantity from 1 to ${item.quantity} and a valid price.')),
+      );
+      return;
+    }
+    setState(() {
+      cart[productId] = newQuantity;
+      prices[productId] = newPrice;
+    });
+  }
+
+  void removeCartItem(String productId) {
+    setState(() {
+      cart.remove(productId);
+      prices.remove(productId);
+    });
   }
 
   Future<void> complete() async {
@@ -163,6 +231,14 @@ class _BillsState extends State<Bills> {
 
   Future<void> _completeSale() async {
     if (cart.isEmpty) return;
+    // Keep an immutable receipt before the sale dialog can clear this draft.
+    // This lets users print immediately after completing an order.
+    List<int>? completedReceipt;
+    try {
+      completedReceipt = await _receiptBytes();
+    } catch (_) {
+      // The sale can still be recorded; a later print will regenerate it.
+    }
     final saleItems = <({Product product, int quantity, double unitPrice})>[];
     for (final entry in cart.entries) {
       final item = find(entry.key);
@@ -174,13 +250,23 @@ class _BillsState extends State<Bills> {
       ));
     }
     if (saleItems.length != cart.length) return;
-    await widget.controller.recordSale(
-      items: saleItems,
-      party: customer.text.trim(),
-      city: city.text.trim(),
-      billNumber: billNumber,
-      date: DateTime.now(),
-    );
+    try {
+      await widget.controller.recordSale(
+        items: saleItems,
+        party: customer.text.trim(),
+        city: city.text.trim(),
+        billNumber: billNumber,
+        date: DateTime.now(),
+      );
+    } catch (error) {
+      if (mounted) {
+        final message = error is StateError
+            ? error.message.toString()
+            : 'Could not complete the sale. Please try again.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+      return;
+    }
     if (mounted) {
       await showDialog(
         context: context,
@@ -197,7 +283,7 @@ class _BillsState extends State<Bills> {
             FilledButton(
               onPressed: () async {
                 Navigator.pop(c);
-                await _printCurrentBill();
+                await _printCurrentBill(receiptBytes: completedReceipt);
               },
               child: const Text('Print order'),
             ),
@@ -302,10 +388,18 @@ class _BillsState extends State<Bills> {
     return bytes;
   }
 
-  Future<void> _printCurrentBill() async {
-    final bytes = await _receiptBytes();
-    if (!mounted) return;
-    await ThermalReceiptPrinter.print(context, bytes);
+  Future<void> _printCurrentBill({List<int>? receiptBytes}) async {
+    try {
+      final bytes = receiptBytes ?? await _receiptBytes();
+      if (!mounted) return;
+      await ThermalReceiptPrinter.print(context, bytes);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not prepare the receipt: $error')),
+        );
+      }
+    }
   }
 
   Future<void> printBill() async => showDialog(
@@ -373,57 +467,14 @@ class _BillsState extends State<Bills> {
         Row(
           children: [
             Expanded(
-              child: DropdownButtonFormField<Product>(
-                initialValue: selectedProduct,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Product',
-                  border: OutlineInputBorder(),
-                ),
-                items: widget.products
-                    .where((p) => availableQuantity(p) > 0)
-                    .map(
-                      (p) => DropdownMenuItem(
-                        value: p,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 34,
-                              height: 34,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                color: primary.withValues(alpha: .1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: p.imageUrl == null || p.imageUrl!.isEmpty
-                                  ? const Icon(
-                                      Icons.inventory_2_outlined,
-                                      color: primary,
-                                      size: 19,
-                                    )
-                                  : Image.network(
-                                      p.imageUrl!,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => const Icon(
-                                        Icons.inventory_2_outlined,
-                                        color: primary,
-                                        size: 19,
-                                      ),
-                                    ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                '${p.nameFor(widget.language)} (${availableQuantity(p)})',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
+              child: ProductSearchField(
+                products: widget.products
+                    .where((item) => availableQuantity(item) > 0)
                     .toList(),
-                onChanged: (v) => setState(() => product = v),
+                selected: selectedProduct,
+                language: widget.language,
+                subtitle: (item) => '${availableQuantity(item)} available',
+                onSelected: (item) => setState(() => product = item),
               ),
             ),
             const SizedBox(width: 10),
@@ -466,7 +517,22 @@ class _BillsState extends State<Bills> {
           return ListTile(
             title: Text(p.nameFor(widget.language)),
             subtitle: Text('${e.value} × ₹${salePrice.toStringAsFixed(2)}'),
-            trailing: Text('₹${(e.value * salePrice).toStringAsFixed(2)}'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('₹${(e.value * salePrice).toStringAsFixed(2)}'),
+                IconButton(
+                  tooltip: 'Edit item',
+                  onPressed: () => editCartItem(e.key),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Remove item',
+                  onPressed: () => removeCartItem(e.key),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
           );
         }),
         const Divider(),

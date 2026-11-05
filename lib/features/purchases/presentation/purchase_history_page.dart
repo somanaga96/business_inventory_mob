@@ -71,7 +71,11 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     bytes.addAll(g.text('INVENTORYPRO', styles: ThermalReceiptPrinter.centerBoldStyle));
     bytes.addAll(g.text('${_movementLabel(d)} receipt', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
-    bytes.addAll(g.text('Product: ${d['productName'] ?? 'Product'}', styles: ThermalReceiptPrinter.normalStyle));
+    bytes.addAll(await ThermalReceiptPrinter.receiptText(
+      g,
+      'Product: ${d['productName'] ?? 'Product'}',
+      styles: ThermalReceiptPrinter.normalStyle,
+    ));
     bytes.addAll(g.text('Date: ${date == null ? '-' : _date(date)}  Time: ${_time(d)}', styles: ThermalReceiptPrinter.normalStyle));
     final supplier = '${d['party'] ?? ''}'.trim();
     final city = '${d['city'] ?? ''}'.trim();
@@ -100,47 +104,21 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     bytes.addAll(g.text('Purchase & damage summary', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.text('${_date(from)} - ${_date(to)}', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
-    bytes.addAll(g.row([
-      PosColumn(text: 'No', width: 1, styles: ThermalReceiptPrinter.boldStyle),
-      PosColumn(text: 'Item', width: 2, styles: ThermalReceiptPrinter.boldStyle),
-      PosColumn(text: 'Date', width: 2, styles: ThermalReceiptPrinter.boldStyle),
-      PosColumn(text: 'Qty x rate', width: 4, styles: ThermalReceiptPrinter.rightBoldStyle),
-      PosColumn(text: 'Total', width: 3, styles: ThermalReceiptPrinter.rightBoldStyle),
-    ]));
+    bytes.addAll(g.text('Product | Qty x Rate = Total', styles: ThermalReceiptPrinter.boldStyle));
     bytes.addAll(g.hr());
     for (var index = 0; index < docs.length; index++) {
       final doc = docs[index];
       final d = doc.data();
-      final purchasedAt = _when(d);
-      bytes.addAll(g.row([
-        PosColumn(
-          text: '${index + 1}',
-          width: 1,
-          styles: ThermalReceiptPrinter.normalStyle,
-        ),
-        PosColumn(
-          text: _short('${d['productName'] ?? 'Product'}', 7),
-          width: 2,
-          styles: ThermalReceiptPrinter.normalStyle,
-        ),
-        PosColumn(
-          text: purchasedAt == null
-              ? '-'
-              : '${purchasedAt.day.toString().padLeft(2, '0')} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][purchasedAt.month - 1]}',
-          width: 2,
-          styles: ThermalReceiptPrinter.normalStyle,
-        ),
-        PosColumn(
-          text: '${_qty(d)} x ${_price(d).toStringAsFixed(2)}',
-          width: 4,
-          styles: ThermalReceiptPrinter.rightStyle,
-        ),
-        PosColumn(
-          text: _total(d).toStringAsFixed(2),
-          width: 3,
-          styles: ThermalReceiptPrinter.rightStyle,
-        ),
-      ]));
+      final title = '${index + 1}. ${_short('${d['productName'] ?? 'Product'}', 12)}';
+      final amount = '${_qty(d)}x${_price(d).toStringAsFixed(2)}=${_total(d).toStringAsFixed(2)}';
+      // Keep the complete row within the compact printer's 32-character
+      // width. Rendering it as one unit prevents later fields from shifting.
+      final gap = (32 - title.length - amount.length).clamp(1, 6).toInt();
+      bytes.addAll(await ThermalReceiptPrinter.receiptText(
+        g,
+        '$title${' ' * gap}$amount',
+        styles: ThermalReceiptPrinter.normalStyle,
+      ));
     }
     bytes.addAll(g.hr());
     bytes.addAll(g.text('TOTAL PURCHASE: Rs ${sum.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightBoldStyle));

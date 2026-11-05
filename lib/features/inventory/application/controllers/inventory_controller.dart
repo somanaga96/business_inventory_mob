@@ -46,6 +46,8 @@ class InventoryController {
     tamilName: tamilName,
     marathiName: marathiName,
   );
+  Future<void> assignMissingProductNumbers(List<Product> products) =>
+      _dataSource.assignMissingProductNumbers(products);
   Future<void> adjustStock(Product product, int delta) =>
       _dataSource.adjustStock(product, delta);
   Future<void> updateProduct({

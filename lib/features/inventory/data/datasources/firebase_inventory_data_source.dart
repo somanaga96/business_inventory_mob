@@ -163,11 +163,13 @@ class FirebaseInventoryDataSource {
     String? tamilName,
     String? marathiName,
   }) async {
+    final productNumber = await _reserveProductNumbers(1).then((numbers) => numbers.single);
     final inventory = _firestore.collection('inventory').doc();
     final batch = _firestore.batch();
     final image = imageUrl?.trim();
     batch.set(inventory, {
       'name': name,
+      'productNumber': productNumber,
       if (tamilName?.trim().isNotEmpty ?? false) 'tamilName': tamilName!.trim(),
       if (marathiName?.trim().isNotEmpty ?? false) 'marathiName': marathiName!.trim(),
       'category': category,
@@ -205,6 +207,34 @@ class FirebaseInventoryDataSource {
     }
     await batch.commit();
   }
+
+  /// Assigns permanent numbers to products created before product numbers were
+  /// introduced. It is safe to call repeatedly; only missing values are set.
+  Future<void> assignMissingProductNumbers(List<Product> products) async {
+    final missing = products.where((product) => product.productNumber == null).toList();
+    if (missing.isEmpty) return;
+    final numbers = await _reserveProductNumbers(missing.length);
+    final batch = _firestore.batch();
+    for (var index = 0; index < missing.length; index++) {
+      batch.update(_firestore.collection('inventory').doc(missing[index].id), {
+        'productNumber': numbers[index],
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  Future<List<int>> _reserveProductNumbers(int count) => _firestore.runTransaction((transaction) async {
+    final counter = _firestore.collection('metadata').doc('productNumberCounter');
+    final snapshot = await transaction.get(counter);
+    final last = (snapshot.data()?['lastProductNumber'] as num?)?.toInt() ?? 0;
+    final first = last + 1;
+    transaction.set(counter, {
+      'lastProductNumber': last + count,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return List<int>.generate(count, (index) => first + index);
+  });
 
   Future<void> adjustStock(Product product, int delta) async {
     final after = (product.quantity + delta).clamp(0, 1 << 31);
@@ -323,43 +353,55 @@ class FirebaseInventoryDataSource {
     required DateTime date,
   }) async {
     await _firestore.runTransaction((dbTransaction) async {
+      // Firestore transactions must perform every read before their first
+      // write. This also allows a bill with multiple products to complete.
+      final stock = <({Product item, int currentQuantity, double currentCost})>[];
       for (final item in items) {
-      final inventory = _firestore.collection('inventory').doc(item.product.id);
-      final snapshot = await dbTransaction.get(inventory);
-      if (!snapshot.exists) throw StateError('A product no longer exists.');
-      final data = snapshot.data() ?? {};
-      final currentQuantity = (data['quantity'] as num?)?.toInt() ?? 0;
-      final currentCost = (data['price'] as num?)?.toDouble() ?? item.product.cost;
-      if (item.quantity > currentQuantity) {
-        throw StateError('${item.product.name} does not have enough stock.');
+        final inventory = _firestore.collection('inventory').doc(item.product.id);
+        final snapshot = await dbTransaction.get(inventory);
+        if (!snapshot.exists) throw StateError('A product no longer exists.');
+        final data = snapshot.data() ?? {};
+        final currentQuantity = (data['quantity'] as num?)?.toInt() ?? 0;
+        if (item.quantity > currentQuantity) {
+          throw StateError('${item.product.name} does not have enough stock.');
+        }
+        stock.add((
+          item: item.product,
+          currentQuantity: currentQuantity,
+          currentCost: (data['price'] as num?)?.toDouble() ?? item.product.cost,
+        ));
       }
-      final after = currentQuantity - item.quantity;
-      dbTransaction.update(inventory, {
-        'quantity': after,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      dbTransaction.set(_firestore.collection('transactions').doc(), {
-        'productId': item.product.id,
-        'productName': item.product.name,
-        'imageUrl': item.product.imageUrl,
-        'quantity': item.quantity,
-        'change': -item.quantity,
-        'type': 'Sale',
-        'recordType': 'inventory_transaction',
-        'unitPrice': item.unitPrice,
-        'mrp': currentCost,
-        'party': party,
-        'city': city,
-        'note': billNumber,
-        'inventoryAfter': after,
-        'transactionDate': Timestamp.fromDate(date),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      for (var index = 0; index < items.length; index++) {
+        final saleItem = items[index];
+        final inventoryItem = stock[index];
+        final after = inventoryItem.currentQuantity - saleItem.quantity;
+        dbTransaction.update(
+          _firestore.collection('inventory').doc(inventoryItem.item.id),
+          {'quantity': after, 'updatedAt': FieldValue.serverTimestamp()},
+        );
+        dbTransaction.set(_firestore.collection('transactions').doc(), {
+          'productId': inventoryItem.item.id,
+          'productName': inventoryItem.item.name,
+          'imageUrl': inventoryItem.item.imageUrl,
+          'quantity': saleItem.quantity,
+          'change': -saleItem.quantity,
+          'type': 'Sale',
+          'recordType': 'inventory_transaction',
+          'unitPrice': saleItem.unitPrice,
+          'mrp': inventoryItem.currentCost,
+          'party': party,
+          'city': city,
+          'note': billNumber,
+          'inventoryAfter': after,
+          'transactionDate': Timestamp.fromDate(date),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
       }
     });
   }
 
-  /// Corrects an existing sale and returns stock for any reduced quantity.
+  /// Corrects an existing sale, restores stock for reductions, and removes
+  /// sale lines whose quantity is set to zero.
   Future<void> updateSaleOrder({
     required List<
       ({String transactionId, String productId, int oldQuantity, int quantity, double unitPrice})
@@ -369,8 +411,16 @@ class FirebaseInventoryDataSource {
   }) async {
     final batch = _firestore.batch();
     for (final item in items) {
-      if (item.quantity <= 0) {
-        throw ArgumentError.value(item.quantity, 'quantity', 'Must be at least one');
+      if (item.quantity < 0) {
+        throw ArgumentError.value(item.quantity, 'quantity', 'Cannot be negative');
+      }
+      if (item.quantity == 0) {
+        batch.update(_firestore.collection('inventory').doc(item.productId), {
+          'quantity': FieldValue.increment(item.oldQuantity),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        batch.delete(_firestore.collection('transactions').doc(item.transactionId));
+        continue;
       }
       final stockDifference = item.oldQuantity - item.quantity;
       batch.update(_firestore.collection('inventory').doc(item.productId), {

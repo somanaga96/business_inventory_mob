@@ -50,9 +50,8 @@ class ThermalReceiptPrinter {
     String text, {
     PosStyles styles = normalStyle,
   }) async {
-    if (!RegExp(r'[\u0900-\u097F\u0B80-\u0BFF]').hasMatch(text)) {
-      return generator.text(text, styles: styles);
-    }
+    // Keep product text visually consistent regardless of whether it contains
+    // only English, ₹, or an Indian script.
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -88,15 +87,12 @@ class ThermalReceiptPrinter {
     required String name,
     required String amount,
   }) async {
-    // Receipt rows have a fixed printable width. Keep names on one line and
-    // make the truncation predictable for every selected language.
-    final displayName = name.length > 13 ? '${name.substring(0, 13)}..' : name;
-    if (!RegExp(r'[\u0900-\u097F\u0B80-\u0BFF]').hasMatch(displayName)) {
-      return generator.row([
-        PosColumn(text: displayName, width: 4, styles: normalStyle),
-        PosColumn(text: amount, width: 8, styles: rightStyle),
-      ]);
-    }
+    // Use the extra space on 80 mm receipts for product names, keeping a
+    // predictable one-line fallback for longer names.
+    final displayName = name.length > 20 ? '${name.substring(0, 20)}..' : name;
+    // Always rasterise item rows. Mixing the printer's built-in font for
+    // English names with bitmap text for ₹/Indian-script names produces rows
+    // of different heights on many thermal printers.
     final namePainter = TextPainter(
       text: TextSpan(
         text: displayName,
@@ -105,7 +101,7 @@ class ThermalReceiptPrinter {
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
-    )..layout(maxWidth: 280);
+    )..layout(maxWidth: 310);
     final amountPainter = TextPainter(
       text: TextSpan(
         text: amount,
@@ -113,7 +109,7 @@ class ThermalReceiptPrinter {
       ),
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.right,
-    )..layout(maxWidth: 265);
+    )..layout(maxWidth: 240);
     final height = [namePainter.height, amountPainter.height]
             .reduce((a, b) => a > b ? a : b)
             .ceil() +

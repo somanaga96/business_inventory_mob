@@ -13,6 +13,7 @@ extension ProductNameLanguageLabel on ProductNameLanguage {
 class Product {
   const Product({
     required this.id,
+    this.productNumber,
     required this.name,
     this.tamilName,
     this.marathiName,
@@ -24,6 +25,8 @@ class Product {
   });
 
   final String id;
+  /// Permanent human-friendly identifier, assigned and stored in Firestore.
+  final int? productNumber;
   final String name;
   /// English is stored in [name] for compatibility with existing inventory.
   final String? tamilName;
@@ -58,6 +61,9 @@ class Product {
         value is num ? value : num.tryParse('$value') ?? 0;
     return Product(
       id: doc.id,
+      productNumber: number(data['productNumber']).toInt() == 0
+          ? null
+          : number(data['productNumber']).toInt(),
       name: '${data['name'] ?? 'Untitled product'}',
       tamilName: data['tamilName'] as String?,
       marathiName: data['marathiName'] as String?,

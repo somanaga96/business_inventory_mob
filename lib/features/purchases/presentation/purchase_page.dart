@@ -80,10 +80,14 @@ class _PurchasePageState extends State<PurchasePage> {
         date,
       );
       if (mounted) {
-        quantity.clear();
-        note.clear();
-        party.clear();
-        city.clear();
+        setState(() {
+          selected = null;
+          quantity.clear();
+          price.clear();
+          note.clear();
+          party.clear();
+          city.clear();
+        });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(type == 'Damage'
               ? 'Damage / loss recorded.'
@@ -144,56 +148,12 @@ class _PurchasePageState extends State<PurchasePage> {
                   },
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<Product>(
-                  initialValue: selectedValue,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Product',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: widget.products
-                      .map(
-                        (p) => DropdownMenuItem(
-                          value: p,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                clipBehavior: Clip.antiAlias,
-                                decoration: BoxDecoration(
-                                  color: primary.withValues(alpha: .10),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: p.imageUrl == null || p.imageUrl!.isEmpty
-                                    ? const Icon(
-                                        Icons.inventory_2_outlined,
-                                        color: primary,
-                                        size: 20,
-                                      )
-                                    : Image.network(
-                                        p.imageUrl!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) => const Icon(
-                                          Icons.inventory_2_outlined,
-                                          color: primary,
-                                          size: 20,
-                                        ),
-                                      ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  '${p.nameFor(widget.language)} (${p.quantity} available)',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (p) => setState(() => selected = p),
+                ProductSearchField(
+                  products: widget.products,
+                  selected: selectedValue,
+                  language: widget.language,
+                  subtitle: (product) => '${product.quantity} available',
+                  onSelected: (product) => setState(() => selected = product),
                 ),
                 const SizedBox(height: 14),
                 TextField(
