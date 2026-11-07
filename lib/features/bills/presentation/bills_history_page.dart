@@ -1061,17 +1061,61 @@ class _BillsHistoryState extends State<BillsHistory> {
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 children: [
-                  ...docs.map((doc) {
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Table(
+                      columnWidths: const {
+                        0: FlexColumnWidth(2.8),
+                        1: FlexColumnWidth(.65),
+                        2: FlexColumnWidth(1.25),
+                        3: FlexColumnWidth(1.4),
+                      },
+                      border: TableBorder.all(
+                        color: Theme.of(context).dividerColor,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      children: [
+                        TableRow(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          ),
+                          children: const [
+                            _OrderTableCell('Product', header: true),
+                            _OrderTableCell('Qty', header: true, alignRight: true),
+                            _OrderTableCell('Price', header: true, alignRight: true),
+                            _OrderTableCell('Amount', header: true, alignRight: true),
+                          ],
+                        ),
+                        ...docs.map((doc) {
+                          final data = doc.data();
+                          final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
+                          final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+                          return TableRow(
+                            children: [
+                              _OrderTableCell(productName(data)),
+                              _OrderTableCell('${qty.toInt()}', alignRight: true),
+                              _OrderTableCell(price.toStringAsFixed(2), alignRight: true),
+                              _OrderTableCell((qty * price).toStringAsFixed(2), alignRight: true),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  ...const <QueryDocumentSnapshot<Map<String, dynamic>>>[].map((doc) {
                   final data = doc.data();
                   final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
                   final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
                   final mrp = (data['mrp'] as num?)?.toDouble() ?? price;
                   return ListTile(
                     title: Text(productName(data)),
-                    subtitle: Text(
+                    /* subtitle: Text(
                       'Order ID: ${entry.key}\nQty: ${qty.toInt()}  ·  MRP: ₹${mrp.toStringAsFixed(2)}  ·  Price: ₹${price.toStringAsFixed(2)}',
                     ),
-                    isThreeLine: true,
+                    ), */
+                    subtitle: Text(
+                      'Qty: ${qty.toInt()}  •  MRP: Rs ${mrp.toStringAsFixed(2)}  •  Price: Rs ${price.toStringAsFixed(2)}',
+                    ),
                     trailing: Text('₹${(qty * price).toStringAsFixed(2)}'),
                   );
                   }),
@@ -1110,5 +1154,32 @@ class _BillsHistoryState extends State<BillsHistory> {
         ],
       );
     },
+  );
+}
+
+class _OrderTableCell extends StatelessWidget {
+  const _OrderTableCell(
+    this.text, {
+    this.header = false,
+    this.alignRight = false,
+  });
+
+  final String text;
+  final bool header;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+    child: Text(
+      text,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      style: TextStyle(
+        fontSize: header ? 12 : 13,
+        fontWeight: header ? FontWeight.w700 : FontWeight.w400,
+      ),
+    ),
   );
 }

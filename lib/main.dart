@@ -33,6 +33,15 @@ Future<void> main() async {
   runApp(const InventoryProApp());
 }
 
+enum UserRole { admin, sales }
+
+class AppUser {
+  const AppUser({required this.username, required this.role});
+
+  final String username;
+  final UserRole role;
+}
+
 class InventoryProApp extends StatefulWidget {
   const InventoryProApp({super.key});
 
@@ -42,6 +51,7 @@ class InventoryProApp extends StatefulWidget {
 
 class _InventoryProAppState extends State<InventoryProApp> {
   ThemeMode themeMode = ThemeMode.system;
+  AppUser? currentUser;
 
   void toggleTheme() {
     final systemBrightness =
@@ -59,13 +69,131 @@ class _InventoryProAppState extends State<InventoryProApp> {
     themeMode: themeMode,
     theme: buildAppTheme(Brightness.light),
     darkTheme: buildAppTheme(Brightness.dark),
-    home: InventoryHome(onToggleTheme: toggleTheme),
+    home: currentUser == null
+        ? LoginPage(onLogin: (user) => setState(() => currentUser = user))
+        : InventoryHome(
+            user: currentUser!,
+            onToggleTheme: toggleTheme,
+            onLogout: () => setState(() => currentUser = null),
+          ),
+  );
+}
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key, required this.onLogin});
+
+  final ValueChanged<AppUser> onLogin;
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final usernameController = TextEditingController();
+  final passwordController = TextEditingController();
+  String? error;
+
+  @override
+  void dispose() {
+    usernameController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  void login() {
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+    final user = switch ((username, password)) {
+      ('admin', 'admin123') =>
+        const AppUser(username: 'admin', role: UserRole.admin),
+      ('sales', 'sales567') =>
+        const AppUser(username: 'sales', role: UserRole.sales),
+      _ => null,
+    };
+    if (user == null) {
+      setState(() => error = 'Invalid username or password.');
+      return;
+    }
+    widget.onLogin(user);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(
+                  Icons.inventory_2_outlined,
+                  color: primary,
+                  size: 64,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'InventoryPro',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                TextField(
+                  controller: usernameController,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  onSubmitted: (_) => login(),
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    error!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ],
+                const SizedBox(height: 22),
+                FilledButton(
+                  onPressed: login,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  child: const Text('Login'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 }
 
 class InventoryHome extends StatefulWidget {
-  const InventoryHome({super.key, required this.onToggleTheme});
+  const InventoryHome({
+    super.key,
+    required this.user,
+    required this.onToggleTheme,
+    required this.onLogout,
+  });
+  final AppUser user;
   final VoidCallback onToggleTheme;
+  final VoidCallback onLogout;
   @override
   State<InventoryHome> createState() => _InventoryHomeState();
 }
@@ -100,6 +228,9 @@ class _InventoryHomeState extends State<InventoryHome> {
   @override
   void initState() {
     super.initState();
+    productLanguage = widget.user.role == UserRole.sales
+        ? ProductNameLanguage.marathi
+        : ProductNameLanguage.tamil;
     controller = InventoryController();
     try {
       FirebaseFirestore.instance;
@@ -120,6 +251,90 @@ class _InventoryHomeState extends State<InventoryHome> {
         controller.assignMissingProductNumbers(products).catchError((_) {
           productNumberMigrationStarted = false;
         });
+      }
+      final isSalesUser = widget.user.role == UserRole.sales;
+      if (isSalesUser) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Orders'),
+            actions: [
+              IconButton(
+                tooltip: 'Logout',
+                onPressed: widget.onLogout,
+                icon: const Icon(Icons.logout),
+              ),
+            ],
+          ),
+          drawer: Drawer(
+            child: SafeArea(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  const ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: primary,
+                      child: Icon(Icons.person_outline, color: Colors.white),
+                    ),
+                    title: Text(
+                      'Sales account',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text('Orders only'),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.translate),
+                    title: const Text('Product name language'),
+                    trailing: DropdownButton<ProductNameLanguage>(
+                      value: productLanguage,
+                      underline: const SizedBox.shrink(),
+                      items: ProductNameLanguage.values
+                          .map(
+                            (language) => DropdownMenuItem(
+                              value: language,
+                              child: Text(language.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (language) {
+                        if (language != null) {
+                          setState(() => productLanguage = language);
+                        }
+                      },
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Icons.dark_mode_outlined
+                          : Icons.light_mode_outlined,
+                    ),
+                    title: const Text('Dark theme'),
+                    trailing: Switch(
+                      value: Theme.of(context).brightness == Brightness.dark,
+                      onChanged: (_) => widget.onToggleTheme(),
+                    ),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.logout),
+                    title: const Text('Logout'),
+                    onTap: widget.onLogout,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          body: SafeArea(
+            child: Bills(
+              products: products,
+              submit: recordTransaction,
+              controller: controller,
+              language: productLanguage,
+              showLastCompletedOrder: true,
+            ),
+          ),
+        );
       }
       final screenWidth = MediaQuery.sizeOf(context).width;
       final screenHeight = MediaQuery.sizeOf(context).height;
@@ -197,6 +412,11 @@ class _InventoryHomeState extends State<InventoryHome> {
               tooltip: 'Home',
               onPressed: tab == 0 ? null : () => setState(() => tab = 0),
               icon: const Icon(Icons.home_outlined, color: primary),
+            ),
+            IconButton(
+              tooltip: 'Logout',
+              onPressed: widget.onLogout,
+              icon: const Icon(Icons.logout, color: primary),
             ),
           ],
         ),

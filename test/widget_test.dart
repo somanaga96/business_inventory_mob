@@ -10,10 +10,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:business_inventory_mob/main.dart';
 
 void main() {
-  testWidgets('shows the inventory dashboard', (WidgetTester tester) async {
+  testWidgets('shows the login screen', (WidgetTester tester) async {
     await tester.pumpWidget(const InventoryProApp());
     await tester.pump();
-    expect(find.text('Overview'), findsWidgets);
+    expect(find.text('Login'), findsOneWidget);
     expect(find.text('InventoryPro'), findsOneWidget);
   });
 }

@@ -19,6 +19,10 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
 
   String _date(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  String _shortDate(DateTime d) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day.toString().padLeft(2, '0')}_${months[d.month - 1]}';
+  }
   DateTime? _when(Map<String, dynamic> d) {
     final value = d['transactionDate'] ?? d['createdAt'];
     return value is Timestamp ? value.toDate() : null;
@@ -187,7 +191,13 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
         return _isPurchaseOrDamage(d) && search.contains(query.toLowerCase());
       }).toList()..sort((a, b) => (_when(b.data()) ?? DateTime(0)).compareTo(_when(a.data()) ?? DateTime(0)));
       final sum = docs.fold<double>(0, (v, doc) => v + _total(doc.data()));
-      return ResponsivePage(children: [
+      final byDate = <DateTime, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+      for (final doc in docs) {
+        final value = _when(doc.data()) ?? DateTime.now();
+        final day = DateTime(value.year, value.month, value.day);
+        byDate.putIfAbsent(day, () => []).add(doc);
+      }
+      return ResponsivePage(horizontalPaddingFactor: .015, children: [
         const Text('Purchase & damage history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const SizedBox(height: 18),
@@ -202,7 +212,48 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
         if (snapshot.hasError) const Card(child: ListTile(leading: Icon(Icons.error_outline), title: Text('Unable to load purchase history.'))),
         if (!snapshot.hasData) const Center(child: Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator())),
         if (snapshot.hasData && docs.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No purchases or damage in this date range'), subtitle: Text('Change the dates or record a stock movement from the Purchase tab.'))),
-        ...docs.map((doc) {
+        ...byDate.entries.map((entry) => Column(children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 6),
+            child: Align(alignment: Alignment.centerLeft, child: Text(_shortDate(entry.key), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+          ),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Table(
+              columnWidths: const {
+                0: FlexColumnWidth(.42),
+                1: FlexColumnWidth(2.15),
+                2: FlexColumnWidth(.9),
+                3: FlexColumnWidth(1.4),
+                4: FlexColumnWidth(1.65),
+              },
+              border: TableBorder.all(color: Theme.of(context).dividerColor),
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                  children: const [
+                    _PurchaseTableCell('+/-', header: true, right: true),
+                    _PurchaseTableCell('Product', header: true),
+                    _PurchaseTableCell('Qty', header: true, right: true),
+                    _PurchaseTableCell('Price', header: true, right: true),
+                    _PurchaseTableCell('Amount', header: true, right: true),
+                  ],
+                ),
+                ...entry.value.map((doc) {
+                  final data = doc.data();
+                  return TableRow(children: [
+                    _PurchaseTableCell(_isDamage(data) ? '−' : '+', right: true),
+                    _PurchaseTableCell('${data['productName'] ?? 'Product'}'),
+                    _PurchaseTableCell('${_qty(data)}', right: true),
+                    _PurchaseTableCell(_price(data).toStringAsFixed(2), right: true),
+                    _PurchaseTableCell(_total(data).toStringAsFixed(2), right: true),
+                  ]);
+                }),
+              ],
+            ),
+          ),
+        ])),
+        ...const <QueryDocumentSnapshot<Map<String, dynamic>>>[].map((doc) {
           final d = doc.data(); final expanded = expandedId == doc.id; final note = '${d['note'] ?? ''}'.trim();
           return Card(margin: const EdgeInsets.only(bottom: 10), child: Column(children: [
             ListTile(onTap: () => setState(() => expandedId = expanded ? null : doc.id), leading: const CircleAvatar(backgroundColor: Color(0xFFDCF8E9), child: Icon(Icons.south_west, color: Color(0xFF168B57))), title: Text('${d['productName'] ?? 'Product'}', style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text('${_date(_when(d) ?? DateTime.now())} • ${_time(d)}'), trailing: Text('Rs ${_total(d).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800))),
@@ -215,5 +266,25 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
         }),
       ]);
     },
+  );
+}
+
+class _PurchaseTableCell extends StatelessWidget {
+  const _PurchaseTableCell(this.value, {this.header = false, this.right = false});
+
+  final String value;
+  final bool header;
+  final bool right;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+    child: Text(
+      value,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: right ? TextAlign.right : TextAlign.left,
+      style: TextStyle(fontSize: header ? 12 : 13, fontWeight: header ? FontWeight.w700 : null),
+    ),
   );
 }

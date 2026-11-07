@@ -1,16 +1,29 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../domain/models/product.dart';
+import 'product_catalog_cache.dart';
 
 class FirebaseInventoryDataSource {
   FirebaseInventoryDataSource({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
   final FirebaseFirestore _firestore;
+  final ProductCatalogCache _catalogCache = ProductCatalogCache();
 
-  Stream<List<Product>> watchProducts() => _firestore
-      .collection('inventory')
-      .snapshots()
-      .map((snapshot) => snapshot.docs.map(Product.fromFirestore).toList());
+  Stream<List<Product>> watchProducts() async* {
+    final cachedProducts = await _catalogCache.read();
+    if (cachedProducts.isNotEmpty) yield cachedProducts;
+    await for (final snapshot in _firestore.collection('inventory').snapshots()) {
+      final products = snapshot.docs.map(Product.fromFirestore).toList();
+      // Do not replace a saved catalogue with an empty offline Firestore cache.
+      if (products.isEmpty && cachedProducts.isNotEmpty && snapshot.metadata.isFromCache) {
+        continue;
+      }
+      await _catalogCache.save(products);
+      yield products;
+    }
+  }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> watchTransactions() => _firestore
       .collection('transactions')
@@ -119,14 +132,21 @@ class FirebaseInventoryDataSource {
   Future<int> nextBillSequence(DateTime date) async {
     final start = DateTime(date.year, date.month, date.day);
     final end = start.add(const Duration(days: 1));
-    final snapshot = await _firestore
-        .collection('transactions')
-        .where(
-          'transactionDate',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(start),
-        )
-        .where('transactionDate', isLessThan: Timestamp.fromDate(end))
-        .get();
+    QuerySnapshot<Map<String, dynamic>> snapshot;
+    try {
+      snapshot = await _firestore
+          .collection('transactions')
+          .where(
+            'transactionDate',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+          )
+          .where('transactionDate', isLessThan: Timestamp.fromDate(end))
+          .get();
+    } catch (_) {
+      // A new device without cached orders can still issue an offline bill.
+      // Document IDs remain unique even if the displayed sequence is reused.
+      return 1;
+    }
     const months = [
       'Jan',
       'Feb',
@@ -352,43 +372,30 @@ class FirebaseInventoryDataSource {
     required String billNumber,
     required DateTime date,
   }) async {
-    await _firestore.runTransaction((dbTransaction) async {
-      // Firestore transactions must perform every read before their first
-      // write. This also allows a bill with multiple products to complete.
-      final stock = <({Product item, int currentQuantity, double currentCost})>[];
-      for (final item in items) {
-        final inventory = _firestore.collection('inventory').doc(item.product.id);
-        final snapshot = await dbTransaction.get(inventory);
-        if (!snapshot.exists) throw StateError('A product no longer exists.');
-        final data = snapshot.data() ?? {};
-        final currentQuantity = (data['quantity'] as num?)?.toInt() ?? 0;
-        if (item.quantity > currentQuantity) {
-          throw StateError('${item.product.name} does not have enough stock.');
-        }
-        stock.add((
-          item: item.product,
-          currentQuantity: currentQuantity,
-          currentCost: (data['price'] as num?)?.toDouble() ?? item.product.cost,
-        ));
+    // Batches are persisted locally by Firestore, unlike transactions which
+    // need a live server round trip. This lets both roles create bills offline
+    // and automatically uploads them once the device reconnects.
+    final batch = _firestore.batch();
+    for (final saleItem in items) {
+      final product = saleItem.product;
+      if (saleItem.quantity > product.quantity) {
+        throw StateError('${product.name} does not have enough stock.');
       }
-      for (var index = 0; index < items.length; index++) {
-        final saleItem = items[index];
-        final inventoryItem = stock[index];
-        final after = inventoryItem.currentQuantity - saleItem.quantity;
-        dbTransaction.update(
-          _firestore.collection('inventory').doc(inventoryItem.item.id),
-          {'quantity': after, 'updatedAt': FieldValue.serverTimestamp()},
-        );
-        dbTransaction.set(_firestore.collection('transactions').doc(), {
-          'productId': inventoryItem.item.id,
-          'productName': inventoryItem.item.name,
-          'imageUrl': inventoryItem.item.imageUrl,
+      final after = product.quantity - saleItem.quantity;
+      batch.update(_firestore.collection('inventory').doc(product.id), {
+        'quantity': FieldValue.increment(-saleItem.quantity),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.set(_firestore.collection('transactions').doc(), {
+          'productId': product.id,
+          'productName': product.name,
+          'imageUrl': product.imageUrl,
           'quantity': saleItem.quantity,
           'change': -saleItem.quantity,
           'type': 'Sale',
           'recordType': 'inventory_transaction',
           'unitPrice': saleItem.unitPrice,
-          'mrp': inventoryItem.currentCost,
+          'mrp': product.cost,
           'party': party,
           'city': city,
           'note': billNumber,
@@ -396,8 +403,11 @@ class FirebaseInventoryDataSource {
           'transactionDate': Timestamp.fromDate(date),
           'createdAt': FieldValue.serverTimestamp(),
         });
-      }
-    });
+    }
+    // Do not wait for a server acknowledgement: when offline this batch is
+    // stored in Firestore's local queue, while the order receipt must remain
+    // available to print immediately.
+    unawaited(batch.commit());
   }
 
   /// Corrects an existing sale, restores stock for reductions, and removes

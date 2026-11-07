@@ -40,18 +40,6 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
-  String _printCode(Map<String, dynamic> data) => switch (_type(data)) {
-    'purchase' => 'PUR',
-    'sale' => 'ORD',
-    'damage' => 'DAM',
-    'stolen' => 'STOL',
-    'adjustment' => 'ADJ',
-    _ => 'MOVE',
-  };
-
-  String _short(String value, int maxLength) =>
-      value.length <= maxLength ? value : '${value.substring(0, maxLength - 1)}.';
-
   bool _matches(Map<String, dynamic> data) => switch (filter) {
     'Purchases' => _type(data) == 'purchase',
     'Orders' => _type(data) == 'sale',
@@ -81,6 +69,16 @@ class _HistoryPageState extends State<HistoryPage> {
 
   String _date(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
+
+  String _shortDate(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${date.day.toString().padLeft(2, '0')}_${months[date.month - 1]}';
+  }
+
+  String _movementSymbol(Map<String, dynamic> data) => switch (_type(data)) {
+    'purchase' || 'adjustment' => '+',
+    _ => '−',
+  };
 
   Future<void> _pickDate(bool isFrom) async {
     final picked = await showDatePicker(
@@ -164,9 +162,8 @@ class _HistoryPageState extends State<HistoryPage> {
     bytes.addAll(generator.text('CATEGORY: $filter', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(generator.hr());
     bytes.addAll(generator.row([
-      PosColumn(text: 'TYPE / ITEM', width: 5, styles: ThermalReceiptPrinter.boldStyle),
-      PosColumn(text: 'QTY x RATE', width: 4, styles: ThermalReceiptPrinter.rightStyle),
-      PosColumn(text: 'AMOUNT', width: 3, styles: ThermalReceiptPrinter.rightStyle),
+      PosColumn(text: '+/- | PRODUCT', width: 6, styles: ThermalReceiptPrinter.boldStyle),
+      PosColumn(text: 'QTY x PRICE = AMOUNT', width: 6, styles: ThermalReceiptPrinter.rightStyle),
     ]));
     bytes.addAll(generator.hr());
     for (final doc in entries) {
@@ -186,23 +183,11 @@ class _HistoryPageState extends State<HistoryPage> {
           lossTotal += total;
           break;
       }
-      bytes.addAll(generator.row([
-        PosColumn(
-          text: '${_printCode(data)} ${_short('${data['productName'] ?? 'Product'}', 5)}',
-          width: 5,
-          styles: ThermalReceiptPrinter.boldStyle,
-        ),
-        PosColumn(
-          text: '${quantity}x${price.toStringAsFixed(2)}',
-          width: 4,
-          styles: ThermalReceiptPrinter.rightStyle,
-        ),
-        PosColumn(
-          text: total.toStringAsFixed(2),
-          width: 3,
-          styles: ThermalReceiptPrinter.rightStyle,
-        ),
-      ]));
+      bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
+        generator,
+        name: '${_movementSymbol(data)} | ${data['productName'] ?? 'Product'}',
+        amount: '$quantity × ${price.toStringAsFixed(2)} = ${total.toStringAsFixed(2)}',
+      ));
     }
     bytes.addAll(generator.hr());
     bytes.addAll(generator.row([
@@ -212,23 +197,32 @@ class _HistoryPageState extends State<HistoryPage> {
         styles: ThermalReceiptPrinter.boldStyle,
       ),
       PosColumn(
-        text: purchaseTotal > 0
-            ? 'PUR: Rs ${purchaseTotal.toStringAsFixed(2)}'
-            : '',
+        text: purchaseTotal > 0 ? '+ ${purchaseTotal.toStringAsFixed(2)}' : '',
         width: 7,
         styles: ThermalReceiptPrinter.rightStyle,
       ),
     ]));
-    if (orderTotal > 0) {
-      bytes.addAll(generator.text('ORD: Rs ${orderTotal.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightStyle));
-    }
-    if (lossTotal > 0) {
-      bytes.addAll(generator.text('LOSS:      Rs ${lossTotal.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightStyle));
+    final stockOutTotal = orderTotal + lossTotal;
+    if (stockOutTotal > 0) {
+      bytes.addAll(generator.text('- ${stockOutTotal.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightStyle));
     }
     bytes.addAll(generator.hr());
     bytes.addAll(generator.feed(3));
     bytes.addAll([0x1D, 0x56, 0x01]);
     if (mounted) await ThermalReceiptPrinter.print(context, bytes);
+  }
+
+  Future<void> _printWithFeedback(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> entries,
+  ) async {
+    try {
+      await _print(entries);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not prepare the history print: $error')),
+      );
+    }
   }
 
   @override
@@ -239,7 +233,14 @@ class _HistoryPageState extends State<HistoryPage> {
           .where((doc) => _matches(doc.data()))
           .toList()
         ..sort((a, b) => (_when(b.data()) ?? DateTime(0)).compareTo(_when(a.data()) ?? DateTime(0)));
+      final byDate = <DateTime, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+      for (final entry in entries) {
+        final value = _when(entry.data()) ?? DateTime.now();
+        final day = DateTime(value.year, value.month, value.day);
+        byDate.putIfAbsent(day, () => []).add(entry);
+      }
       return ResponsivePage(
+        horizontalPaddingFactor: .015,
         children: [
           const Text('History', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
@@ -274,7 +275,7 @@ class _HistoryPageState extends State<HistoryPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: entries.isEmpty ? null : () => _print(entries),
+                  onPressed: entries.isEmpty ? null : () => _printWithFeedback(entries),
                   icon: const Icon(Icons.print_outlined),
                   label: const Text('Print'),
                 ),
@@ -285,7 +286,50 @@ class _HistoryPageState extends State<HistoryPage> {
           if (!snapshot.hasData) const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
           if (snapshot.hasError) const Card(child: ListTile(leading: Icon(Icons.error_outline), title: Text('Unable to load history.'))),
           if (snapshot.hasData && entries.isEmpty) const Card(child: ListTile(leading: Icon(Icons.history_outlined), title: Text('No matching history'), subtitle: Text('Try a different date range or category.'))),
-          ...entries.map((doc) {
+          ...byDate.entries.map((entry) => Column(children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 6),
+              child: Align(alignment: Alignment.centerLeft, child: Text(_shortDate(entry.key), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+            ),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(.42),
+                  1: FlexColumnWidth(2.15),
+                  2: FlexColumnWidth(.9),
+                  3: FlexColumnWidth(1.4),
+                  4: FlexColumnWidth(1.65),
+                },
+                border: TableBorder.all(color: Theme.of(context).dividerColor),
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                    children: const [
+                      _HistoryTableCell('+/-', header: true, right: true),
+                      _HistoryTableCell('Product', header: true),
+                      _HistoryTableCell('Qty', header: true, right: true),
+                      _HistoryTableCell('Price', header: true, right: true),
+                      _HistoryTableCell('Amount', header: true, right: true),
+                    ],
+                  ),
+                  ...entry.value.map((doc) {
+                    final data = doc.data();
+                    final quantity = _quantity(data);
+                    final price = _price(data);
+                    return TableRow(children: [
+                      _HistoryTableCell(_movementSymbol(data), right: true),
+                      _HistoryTableCell('${data['productName'] ?? 'Product'}'),
+                      _HistoryTableCell('$quantity', right: true),
+                      _HistoryTableCell(price.toStringAsFixed(2), right: true),
+                      _HistoryTableCell((quantity * price).toStringAsFixed(2), right: true),
+                    ]);
+                  }),
+                ],
+              ),
+            ),
+          ])),
+          ...const <QueryDocumentSnapshot<Map<String, dynamic>>>[].map((doc) {
             final data = doc.data();
             final quantity = _quantity(data);
             final price = _price(data);
@@ -304,5 +348,25 @@ class _HistoryPageState extends State<HistoryPage> {
         ],
       );
     },
+  );
+}
+
+class _HistoryTableCell extends StatelessWidget {
+  const _HistoryTableCell(this.value, {this.header = false, this.right = false});
+
+  final String value;
+  final bool header;
+  final bool right;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+    child: Text(
+      value,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: right ? TextAlign.right : TextAlign.left,
+      style: TextStyle(fontSize: header ? 12 : 13, fontWeight: header ? FontWeight.w700 : null),
+    ),
   );
 }

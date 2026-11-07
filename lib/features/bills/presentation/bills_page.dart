@@ -7,6 +7,7 @@ class Bills extends StatefulWidget {
     required this.submit,
     required this.controller,
     required this.language,
+    this.showLastCompletedOrder = false,
   });
   final List<Product> products;
   final Future<void> Function(
@@ -22,6 +23,7 @@ class Bills extends StatefulWidget {
   submit;
   final InventoryController controller;
   final ProductNameLanguage language;
+  final bool showLastCompletedOrder;
   @override
   State<Bills> createState() => _BillsState();
 }
@@ -37,6 +39,7 @@ class _BillsState extends State<Bills> {
   int billSequence = 1;
   late String billNumber;
   bool billNumberReady = false;
+  _LastCompletedOrder? lastCompletedOrder;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? billSubscription;
   static const months = [
     'Jan',
@@ -250,13 +253,27 @@ class _BillsState extends State<Bills> {
       ));
     }
     if (saleItems.length != cart.length) return;
+    final completedBillNumber = billNumber;
+    final completedCustomer = customer.text.trim();
+    final completedCity = city.text.trim();
+    final completedTotal = total;
+    final completedAt = DateTime.now();
+    final completedItems = saleItems
+        .map(
+          (item) => _LastOrderItem(
+            name: item.product.nameFor(widget.language),
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+          ),
+        )
+        .toList();
     try {
       await widget.controller.recordSale(
         items: saleItems,
         party: customer.text.trim(),
         city: city.text.trim(),
         billNumber: billNumber,
-        date: DateTime.now(),
+        date: completedAt,
       );
     } catch (error) {
       if (mounted) {
@@ -293,6 +310,17 @@ class _BillsState extends State<Bills> {
       setState(() {
         cart.clear();
         prices.clear();
+        if (widget.showLastCompletedOrder) {
+          lastCompletedOrder = _LastCompletedOrder(
+            billNumber: completedBillNumber,
+            customer: completedCustomer,
+            city: completedCity,
+            items: completedItems,
+            total: completedTotal,
+            completedAt: completedAt,
+            receiptBytes: completedReceipt,
+          );
+        }
         customer.clear();
         city.clear();
         quantity.text = '1';
@@ -397,6 +425,25 @@ class _BillsState extends State<Bills> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not prepare the receipt: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _printLastOrder(_LastCompletedOrder order) async {
+    final receiptBytes = order.receiptBytes;
+    if (receiptBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Receipt is not available for this order.')),
+      );
+      return;
+    }
+    try {
+      await ThermalReceiptPrinter.print(context, receiptBytes);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not print the order: $error')),
         );
       }
     }
@@ -543,6 +590,13 @@ class _BillsState extends State<Bills> {
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
         ),
+        if (widget.showLastCompletedOrder && lastCompletedOrder != null) ...[
+          const SizedBox(height: 18),
+          _LastOrderCard(
+            order: lastCompletedOrder!,
+            onPrint: () => _printLastOrder(lastCompletedOrder!),
+          ),
+        ],
         const SizedBox(height: 88),
           ],
         ),
@@ -579,4 +633,119 @@ class _BillsState extends State<Bills> {
       ],
     );
   }
+}
+
+class _LastCompletedOrder {
+  const _LastCompletedOrder({
+    required this.billNumber,
+    required this.customer,
+    required this.city,
+    required this.items,
+    required this.total,
+    required this.completedAt,
+    required this.receiptBytes,
+  });
+
+  final String billNumber;
+  final String customer;
+  final String city;
+  final List<_LastOrderItem> items;
+  final double total;
+  final DateTime completedAt;
+  final List<int>? receiptBytes;
+}
+
+class _LastOrderItem {
+  const _LastOrderItem({
+    required this.name,
+    required this.quantity,
+    required this.unitPrice,
+  });
+
+  final String name;
+  final int quantity;
+  final double unitPrice;
+
+  double get lineTotal => quantity * unitPrice;
+}
+
+class _LastOrderCard extends StatelessWidget {
+  const _LastOrderCard({required this.order, required this.onPrint});
+
+  final _LastCompletedOrder order;
+  final VoidCallback onPrint;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(context).colorScheme.secondaryContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Last order',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text('Order: ${order.billNumber}'),
+          Text(
+            'Completed: ${order.completedAt.day.toString().padLeft(2, '0')}/'
+            '${order.completedAt.month.toString().padLeft(2, '0')}/'
+            '${order.completedAt.year} at '
+            '${order.completedAt.hour.toString().padLeft(2, '0')}:'
+            '${order.completedAt.minute.toString().padLeft(2, '0')}',
+          ),
+          Text(
+            'Customer: '
+            '${order.customer.isEmpty ? 'Not provided' : order.customer}',
+          ),
+          Text(
+            'City / Village: '
+            '${order.city.isEmpty ? 'Not provided' : order.city}',
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Items',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          ...order.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: Text('${item.name} × ${item.quantity}')),
+                  const SizedBox(width: 12),
+                  Text(
+                    '₹${item.unitPrice.toStringAsFixed(2)} × '
+                    '${item.quantity} = ₹${item.lineTotal.toStringAsFixed(2)}',
+                    textAlign: TextAlign.right,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'Total ₹${order.total.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: order.receiptBytes == null ? null : onPrint,
+              icon: const Icon(Icons.print_outlined),
+              label: const Text('Print order'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
