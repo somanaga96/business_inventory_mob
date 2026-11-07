@@ -213,7 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                   child: Padding(
                     padding: EdgeInsets.all(14),
                     child: Text(
-                      'Demo login details\nAdmin: admin / admin123\nSales: sales / sales567',
+                      'Sales login details\nUsername: sales\nPassword: sales567',
                     ),
                   ),
                 ),
