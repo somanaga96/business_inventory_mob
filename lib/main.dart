@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'core/theme/app_theme.dart';
+import 'core/services/app_session.dart';
 import 'core/services/thermal_receipt_printer.dart';
 import 'firebase/firebase_options.dart';
 import 'features/alerts/presentation/alerts_page.dart';
@@ -52,6 +53,36 @@ class InventoryProApp extends StatefulWidget {
 class _InventoryProAppState extends State<InventoryProApp> {
   ThemeMode themeMode = ThemeMode.system;
   AppUser? currentUser;
+  bool sessionReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    final username = await AppSession.readUsername();
+    if (!mounted) return;
+    setState(() {
+      currentUser = switch (username) {
+        'admin' => const AppUser(username: 'admin', role: UserRole.admin),
+        'sales' => const AppUser(username: 'sales', role: UserRole.sales),
+        _ => null,
+      };
+      sessionReady = true;
+    });
+  }
+
+  Future<void> _login(AppUser user) async {
+    setState(() => currentUser = user);
+    await AppSession.saveUsername(user.username);
+  }
+
+  Future<void> _logout() async {
+    setState(() => currentUser = null);
+    await AppSession.clear();
+  }
 
   void toggleTheme() {
     final systemBrightness =
@@ -69,12 +100,14 @@ class _InventoryProAppState extends State<InventoryProApp> {
     themeMode: themeMode,
     theme: buildAppTheme(Brightness.light),
     darkTheme: buildAppTheme(Brightness.dark),
-    home: currentUser == null
-        ? LoginPage(onLogin: (user) => setState(() => currentUser = user))
+    home: !sessionReady
+        ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+        : currentUser == null
+        ? LoginPage(onLogin: _login)
         : InventoryHome(
             user: currentUser!,
             onToggleTheme: toggleTheme,
-            onLogout: () => setState(() => currentUser = null),
+            onLogout: _logout,
           ),
   );
 }
@@ -174,6 +207,15 @@ class _LoginPageState extends State<LoginPage> {
                     minimumSize: const Size.fromHeight(52),
                   ),
                   child: const Text('Login'),
+                ),
+                const SizedBox(height: 20),
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(14),
+                    child: Text(
+                      'Demo login details\nAdmin: admin / admin123\nSales: sales / sales567',
+                    ),
+                  ),
                 ),
               ],
             ),
