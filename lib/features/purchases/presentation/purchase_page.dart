@@ -29,6 +29,16 @@ class _PurchasePageState extends State<PurchasePage> {
   final note = TextEditingController();
   DateTime date = DateTime.now();
   bool saving = false;
+
+  bool get _isTamil => widget.language == ProductNameLanguage.tamil;
+
+  String _text(String english, String tamil) => _isTamil ? tamil : english;
+
+  String get _typeLabel => switch (type) {
+    'Damage' => _text('Damage / loss', 'உடைதல்'),
+    'Stolen' => _text('Stolen stock', 'திருட்டு'),
+    _ => _text('Purchase', 'வாங்குதல்'),
+  };
   @override
   void dispose() {
     quantity.dispose();
@@ -55,15 +65,23 @@ class _PurchasePageState extends State<PurchasePage> {
         unitPrice <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(type == 'Damage' || type == 'Stolen'
-            ? 'Product and ${type.toLowerCase()} quantity are required.'
-            : 'Product, purchase quantity, and buy price are required.')),
+            ? _text('Product and quantity are required.', 'பொருள் மற்றும் எண்ணிக்கை அவசியம்.')
+            : _text(
+                'Product, purchase quantity, and buy price are required.',
+                'பொருள், பொருள் எண்ணிக்கை மற்றும் பொருள் விலை அவசியம்.',
+              ))),
       );
       return;
     }
     final stockOut = type == 'Sale' || type == 'Damage' || type == 'Stolen';
     if (stockOut && amount > currentProduct.quantity) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot remove more than current stock.')),
+        SnackBar(
+          content: Text(_text(
+            'Cannot remove more than current stock.',
+            'தற்போதைய இருப்பை விட அதிகமாகக் குறைக்க முடியாது.',
+          )),
+        ),
       );
       return;
     }
@@ -90,10 +108,10 @@ class _PurchasePageState extends State<PurchasePage> {
         });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(type == 'Damage'
-              ? 'Damage / loss recorded.'
+              ? _text('Damage / loss recorded.', 'உடைதல் பதிவு செய்யப்பட்டது.')
               : type == 'Stolen'
-              ? 'Stolen stock recorded.'
-              : 'Purchase recorded.'),
+              ? _text('Stolen stock recorded.', 'திருட்டு பதிவு செய்யப்பட்டது.')
+              : _text('Purchase recorded.', 'வாங்குதல் பதிவு செய்யப்பட்டது.')),
         ));
       }
     } on StateError catch (error) {
@@ -125,22 +143,22 @@ class _PurchasePageState extends State<PurchasePage> {
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: type,
-                  decoration: const InputDecoration(
-                    labelText: 'Stock movement',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _text('Stock movement', 'இருப்பு மாற்றம்'),
+                    border: const OutlineInputBorder(),
                   ),
-                  items: const [
+                  items: [
                     DropdownMenuItem(
                       value: 'Purchase',
-                      child: Text('Purchase / stock in'),
+                      child: Text(_text('Purchase / stock in', 'வாங்குதல்')),
                     ),
                     DropdownMenuItem(
                       value: 'Damage',
-                      child: Text('Damage / loss'),
+                      child: Text(_text('Damage / loss', 'உடைதல்')),
                     ),
                     DropdownMenuItem(
                       value: 'Stolen',
-                      child: Text('Stolen stock'),
+                      child: Text(_text('Stolen stock', 'திருட்டு')),
                     ),
                   ],
                   onChanged: (value) {
@@ -152,7 +170,12 @@ class _PurchasePageState extends State<PurchasePage> {
                   products: widget.products,
                   selected: selectedValue,
                   language: widget.language,
-                  subtitle: (product) => '${product.quantity} available',
+                  labelText: _text('Product', 'பொருள்'),
+                  hintText: _text('Search product or number', 'பொருள் அல்லது எண் தேடுக'),
+                  subtitle: (product) => _text(
+                    '${product.quantity} available',
+                    '${product.quantity} இருப்பு',
+                  ),
                   onSelected: (product) => setState(() => selected = product),
                 ),
                 const SizedBox(height: 14),
@@ -160,9 +183,9 @@ class _PurchasePageState extends State<PurchasePage> {
                   controller: quantity,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: type == 'Damage' || type == 'Stolen'
-                        ? '${type == 'Stolen' ? 'Stolen' : 'Damaged'} quantity *'
-                        : 'Purchase quantity *',
+                    labelText: _isTamil
+                        ? 'பொருள் எண்ணிக்கை *'
+                        : '${type == 'Purchase' ? 'Purchase' : _typeLabel} quantity *',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -173,7 +196,7 @@ class _PurchasePageState extends State<PurchasePage> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Buy price per unit *',
+                    labelText: _text('Buy price per unit *', 'பொருள் விலை *'),
                     hintText: selected == null
                         ? '0.00'
                         : selected!.cost.toStringAsFixed(2),
@@ -184,17 +207,20 @@ class _PurchasePageState extends State<PurchasePage> {
                 if (type != 'Damage' && type != 'Stolen') const SizedBox(height: 14),
                 TextField(
                   controller: party,
-                  decoration: const InputDecoration(
-                    labelText: 'Supplier / Party (optional)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _text(
+                      'Supplier / Party (optional)',
+                      'பொருள் கொடுப்பவர் பெயர் (விருப்பம்)',
+                    ),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 14),
                 TextField(
                   controller: city,
-                  decoration: const InputDecoration(
-                    labelText: 'City / Village (optional)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _text('City / Village (optional)', 'ஊர் / கிராமம் (விருப்பம்)'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -210,7 +236,7 @@ class _PurchasePageState extends State<PurchasePage> {
                   },
                   icon: const Icon(Icons.calendar_today_outlined),
                   label: Text(
-                    '${type == 'Damage' ? 'Damage' : type == 'Stolen' ? 'Stolen' : 'Purchase'} date: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
+                    '${_text('Date', 'தேதி')}: ${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}',
                   ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
@@ -220,10 +246,10 @@ class _PurchasePageState extends State<PurchasePage> {
                 TextField(
                   controller: note,
                   maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Note (optional)',
-                    hintText: 'Supplier, sale, adjustment…',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _text('Note (optional)', 'குறிப்பு (விருப்பம்)'),
+                    hintText: _text('Supplier, sale, adjustment…', 'வழங்குபவர், விற்பனை, மாற்றம்…'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 88),
@@ -253,7 +279,7 @@ class _PurchasePageState extends State<PurchasePage> {
                     ),
                   )
                 : const Icon(Icons.check),
-            label: Text(saving ? 'Saving…' : 'Record $type'),
+            label: Text(saving ? _text('Saving…', 'சேமிக்கிறது…') : _text('Record $_typeLabel', 'பதிவு செய்')),
           ),
         ),
       ],

@@ -13,6 +13,8 @@ class ProductSearchField extends StatelessWidget {
     required this.onSelected,
     this.selected,
     this.subtitle,
+    this.labelText = 'Product',
+    this.hintText = 'Search product or number',
   });
 
   final List<Product> products;
@@ -20,6 +22,8 @@ class ProductSearchField extends StatelessWidget {
   final Product? selected;
   final String Function(Product)? subtitle;
   final ValueChanged<Product> onSelected;
+  final String labelText;
+  final String hintText;
 
   @override
   Widget build(BuildContext context) => Autocomplete<Product>(
@@ -45,11 +49,11 @@ class ProductSearchField extends StatelessWidget {
     fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) => TextField(
       controller: controller,
       focusNode: focusNode,
-      decoration: const InputDecoration(
-        labelText: 'Product',
-        hintText: 'Search product or number',
-        prefixIcon: Icon(Icons.search),
-        border: OutlineInputBorder(),
+      decoration: InputDecoration(
+        labelText: labelText,
+        hintText: hintText,
+        prefixIcon: const Icon(Icons.search),
+        border: const OutlineInputBorder(),
       ),
     ),
     optionsViewBuilder: (context, onOptionSelected, options) => Align(

@@ -550,7 +550,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Overview',
                   'Products',
                   'Inventory',
-                  'Purchase',
+                  'பொருள் வாங்க',
                   'Purchase history',
                   'Orders',
                   'Order history',
@@ -594,12 +594,12 @@ class _InventoryHomeState extends State<InventoryHome> {
                 width: billButtonWidth,
                 height: billButtonHeight,
                 child: FloatingActionButton.extended(
-                  tooltip: 'Add bill',
-                  onPressed: openNewBill,
+                  tooltip: 'பொருள் வாங்க',
+                  onPressed: openPurchase,
                   backgroundColor: primary,
                   foregroundColor: Colors.white,
-                  icon: const Icon(Icons.receipt_long_outlined),
-                  label: const Text('Add bill'),
+                  icon: const Icon(Icons.shopping_cart_outlined),
+                  label: const Text('பொருள் வாங்க'),
                 ),
               ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -608,6 +608,8 @@ class _InventoryHomeState extends State<InventoryHome> {
   );
 
   void openNewBill() => setState(() => tab = 5);
+
+  void openPurchase() => setState(() => tab = 3);
 
   Future<void> exportBackup() async {
     try {
