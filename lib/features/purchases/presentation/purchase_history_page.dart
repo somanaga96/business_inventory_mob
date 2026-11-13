@@ -77,6 +77,15 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
       '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'damage';
   bool _isPurchaseOrDamage(Map<String, dynamic> d) =>
       _isPurchase(d) || _isDamage(d);
+  /// Compact movement labels used in the history table: Buy, Sell, and Loss.
+  String _movementCode(Map<String, dynamic> d) {
+    final type = '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase();
+    return switch (type) {
+      'purchase' || 'return' => 'B',
+      'sale' => 'S',
+      _ => 'L',
+    };
+  }
   String _movementLabel(Map<String, dynamic> d) => _isDamage(d)
       ? _text('Damage / loss', 'சேதம் / இழப்பு')
       : _text('Purchase', 'கொள்முதல்');
@@ -364,7 +373,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                 TableRow(
                   decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest),
                   children: [
-                    const _PurchaseTableCell('+/-', header: true, right: true),
+                    const _PurchaseTableCell('B/S/L', header: true, right: true),
                     _PurchaseTableCell(_text('Product', 'பொருள்'), header: true),
                     _PurchaseTableCell(_text('Qty', 'அளவு'), header: true, right: true),
                     _PurchaseTableCell(_text('Price', 'விலை'), header: true, right: true),
@@ -374,7 +383,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                 ...entry.value.map((doc) {
                   final data = doc.data();
                   return TableRow(children: [
-                    _PurchaseTableCell(_isDamage(data) ? '−' : '+', right: true),
+                    _PurchaseTableCell(_movementCode(data), right: true),
                     _PurchaseTableCell(_productName(data)),
                     _PurchaseTableCell('${_qty(data)}', right: true),
                     _PurchaseTableCell(_price(data).toStringAsFixed(2), right: true),

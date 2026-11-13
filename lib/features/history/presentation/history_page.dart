@@ -92,9 +92,12 @@ class _HistoryPageState extends State<HistoryPage> {
     return '${date.day.toString().padLeft(2, '0')}_${months[date.month - 1]}';
   }
 
-  String _movementSymbol(Map<String, dynamic> data) => switch (_type(data)) {
-    'purchase' || 'adjustment' => '+',
-    _ => '−',
+  /// Compact movement labels: Buy, Sell, and Loss.
+  String _movementCode(Map<String, dynamic> data) => switch (_type(data)) {
+    'purchase' || 'return' => 'B',
+    'sale' => 'S',
+    'adjustment' => ((data['change'] as num?)?.toInt() ?? 0) >= 0 ? 'B' : 'L',
+    _ => 'L',
   };
 
   Future<void> _pickDate(bool isFrom) async {
@@ -192,7 +195,7 @@ class _HistoryPageState extends State<HistoryPage> {
         bytes.addAll(generator.hr());
         bytes.addAll(generator.text(_date(day), styles: ThermalReceiptPrinter.boldStyle));
         bytes.addAll(generator.row([
-          PosColumn(text: '+/- | PRODUCT', width: 6, styles: ThermalReceiptPrinter.boldStyle),
+          PosColumn(text: 'B/S/L | PRODUCT', width: 6, styles: ThermalReceiptPrinter.boldStyle),
           PosColumn(text: 'QTY x PRICE = AMOUNT', width: 6, styles: ThermalReceiptPrinter.rightStyle),
         ]));
       }
@@ -210,7 +213,7 @@ class _HistoryPageState extends State<HistoryPage> {
       }
       bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
         generator,
-        name: '${_movementSymbol(data)} | ${_productName(data)}',
+        name: '${_movementCode(data)} | ${_productName(data)}',
         amount: '$quantity × ${price.toStringAsFixed(2)} = ${total.toStringAsFixed(2)}',
       ));
     }
@@ -222,14 +225,14 @@ class _HistoryPageState extends State<HistoryPage> {
         styles: ThermalReceiptPrinter.boldStyle,
       ),
       PosColumn(
-        text: purchaseTotal > 0 ? '+ ${purchaseTotal.toStringAsFixed(2)}' : '',
+        text: purchaseTotal > 0 ? 'BUY ${purchaseTotal.toStringAsFixed(2)}' : '',
         width: 7,
         styles: ThermalReceiptPrinter.rightStyle,
       ),
     ]));
     final stockOutTotal = orderTotal + lossTotal;
     if (stockOutTotal > 0) {
-      bytes.addAll(generator.text('- ${stockOutTotal.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightStyle));
+      bytes.addAll(generator.text('SELL/LOSS ${stockOutTotal.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightStyle));
     }
     bytes.addAll(generator.hr());
     bytes.addAll(generator.feed(3));
@@ -331,7 +334,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   TableRow(
                     decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest),
                   children: [
-                      const _HistoryTableCell('+/-', header: true, right: true),
+                      const _HistoryTableCell('B/S/L', header: true, right: true),
                       _HistoryTableCell(_text('Product', 'பொருள்'), header: true),
                       _HistoryTableCell(_text('Qty', 'அளவு'), header: true, right: true),
                       _HistoryTableCell(_text('Price', 'விலை'), header: true, right: true),
@@ -343,7 +346,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     final quantity = _quantity(data);
                     final price = _price(data);
                     return TableRow(children: [
-                      _HistoryTableCell(_movementSymbol(data), right: true),
+                      _HistoryTableCell(_movementCode(data), right: true),
                       _HistoryTableCell(_productName(data)),
                       _HistoryTableCell('$quantity', right: true),
                       _HistoryTableCell(price.toStringAsFixed(2), right: true),

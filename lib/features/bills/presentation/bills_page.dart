@@ -604,30 +604,39 @@ class _BillsState extends State<Bills> {
           left: 20,
           right: 20,
           bottom: 12,
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: cart.isEmpty || !billNumberReady ? null : printBill,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
+          child: Material(
+            color: Theme.of(context).colorScheme.surface,
+            elevation: 8,
+            borderRadius: BorderRadius.circular(28),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: cart.isEmpty || !billNumberReady ? null : printBill,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                        minimumSize: const Size.fromHeight(54),
+                      ),
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('Print order'),
+                    ),
                   ),
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text('Print order'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: cart.isEmpty || !billNumberReady ? null : complete,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: cart.isEmpty || !billNumberReady ? null : complete,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(54),
+                      ),
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text('Complete sale'),
+                    ),
                   ),
-                  icon: const Icon(Icons.receipt_long),
-                  label: const Text('Complete sale'),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ],
