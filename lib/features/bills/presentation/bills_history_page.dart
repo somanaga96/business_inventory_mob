@@ -714,6 +714,12 @@ class _BillsHistoryState extends State<BillsHistory> {
           party: customer.text.trim(),
           city: city.text.trim(),
         );
+      } on StateError catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.message.toString())),
+          );
+        }
       } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -726,6 +732,48 @@ class _BillsHistoryState extends State<BillsHistory> {
     city.dispose();
     for (final controller in [...quantities, ...prices]) {
       controller.dispose();
+    }
+  }
+
+  Future<void> _deleteTodayOrder(
+    String orderNumber,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    if (!sameDay(selectedDate, DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only today\'s orders can be deleted.')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete order?'),
+        content: Text('Delete order $orderNumber and restore its stock?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.controller.updateSaleOrder(
+        items: docs.map((doc) {
+          final data = doc.data();
+          return (transactionId: doc.id, productId: '${data['productId']}', oldQuantity: (data['quantity'] as num?)?.toInt() ?? 0, quantity: 0, unitPrice: (data['unitPrice'] as num?)?.toDouble() ?? 0);
+        }).toList(),
+        party: '',
+        city: '',
+      );
+    } on StateError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message.toString())),
+        );
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not delete this order.')));
     }
   }
 
@@ -1125,23 +1173,32 @@ class _BillsHistoryState extends State<BillsHistory> {
                       children: [
                         if (sameDay(selectedDate, DateTime.now())) ...[
                           Expanded(
-                            child: OutlinedButton.icon(
+                            child: _OrderActionButton(
                               onPressed: () => _editTodayOrder(entry.key, docs),
-                              icon: const Icon(Icons.edit_outlined),
-                              label: const Text('Edit order'),
+                              icon: Icons.edit_outlined,
+                              label: 'Edit',
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _OrderActionButton(
+                              onPressed: () => _deleteTodayOrder(entry.key, docs),
+                              icon: Icons.delete_outline,
+                              label: 'Delete',
+                              color: Colors.red,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
                         ],
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: _OrderActionButton(
                             onPressed: () => _printHistoryBill(
                               context,
                               entry.key,
                               docs,
                             ),
-                            icon: const Icon(Icons.print_outlined),
-                            label: const Text('Print order'),
+                            icon: Icons.print_outlined,
+                            label: 'Print',
                           ),
                         ),
                       ],
@@ -1154,6 +1211,33 @@ class _BillsHistoryState extends State<BillsHistory> {
         ],
       );
     },
+  );
+}
+
+class _OrderActionButton extends StatelessWidget {
+  const _OrderActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.color,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 17),
+    label: Text(label, maxLines: 1, overflow: TextOverflow.fade),
+    style: OutlinedButton.styleFrom(
+      foregroundColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      minimumSize: const Size(0, 42),
+      visualDensity: VisualDensity.compact,
+    ),
   );
 }
 

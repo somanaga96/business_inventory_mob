@@ -419,33 +419,114 @@ class FirebaseInventoryDataSource {
     required String party,
     required String city,
   }) async {
-    final batch = _firestore.batch();
+    final stockChanges = <String, int>{};
     for (final item in items) {
       if (item.quantity < 0) {
         throw ArgumentError.value(item.quantity, 'quantity', 'Cannot be negative');
       }
-      if (item.quantity == 0) {
-        batch.update(_firestore.collection('inventory').doc(item.productId), {
-          'quantity': FieldValue.increment(item.oldQuantity),
+      stockChanges.update(
+        item.productId,
+        (change) => change + item.oldQuantity - item.quantity,
+        ifAbsent: () => item.oldQuantity - item.quantity,
+      );
+    }
+    await _firestore.runTransaction((transaction) async {
+      final inventory = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final productId in stockChanges.keys) {
+        final reference = _firestore.collection('inventory').doc(productId);
+        final snapshot = await transaction.get(reference);
+        if (!snapshot.exists) throw StateError('A product in this order no longer exists.');
+        inventory[productId] = snapshot;
+      }
+      for (final entry in stockChanges.entries) {
+        final current = (inventory[entry.key]!.data()?['quantity'] as num?)?.toInt() ?? 0;
+        final next = current + entry.value;
+        if (next < 0) throw StateError('Not enough stock to increase this order quantity.');
+        transaction.update(_firestore.collection('inventory').doc(entry.key), {
+          'quantity': next,
           'updatedAt': FieldValue.serverTimestamp(),
         });
-        batch.delete(_firestore.collection('transactions').doc(item.transactionId));
-        continue;
       }
-      final stockDifference = item.oldQuantity - item.quantity;
-      batch.update(_firestore.collection('inventory').doc(item.productId), {
-        'quantity': FieldValue.increment(stockDifference),
+      for (final item in items) {
+        final reference = _firestore.collection('transactions').doc(item.transactionId);
+        if (item.quantity == 0) {
+          transaction.delete(reference);
+        } else {
+          transaction.update(reference, {
+            'quantity': item.quantity,
+            'change': -item.quantity,
+            'unitPrice': item.unitPrice,
+            'party': party,
+            'city': city,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    });
+  }
+
+  Future<void> updateStockMovement({
+    required String transactionId,
+    required String productId,
+    required int oldChange,
+    required int quantity,
+    required String type,
+    required double unitPrice,
+    required String party,
+    required String city,
+    required String note,
+    required DateTime date,
+  }) async {
+    final inventory = _firestore.collection('inventory').doc(productId);
+    final movement = _firestore.collection('transactions').doc(transactionId);
+    final newChange = type == 'Purchase' ? quantity : -quantity;
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(inventory);
+      if (!snapshot.exists) throw StateError('Product no longer exists.');
+      final current = (snapshot.data()?['quantity'] as num?)?.toInt() ?? 0;
+      final after = current - oldChange + newChange;
+      if (after < 0) throw StateError('This change would make stock negative.');
+      transaction.update(inventory, {
+        'quantity': after,
+        // A corrected purchase price must also be reflected in the inventory
+        // card and its total value on the dashboard.
+        if (type == 'Purchase') 'price': unitPrice,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      batch.update(_firestore.collection('transactions').doc(item.transactionId), {
-        'quantity': item.quantity,
-        'change': -item.quantity,
-        'unitPrice': item.unitPrice,
+      transaction.update(movement, {
+        'quantity': quantity,
+        'change': newChange,
+        'unitPrice': unitPrice,
+        if (type == 'Purchase') 'purchaseQuantity': quantity,
+        if (type == 'Purchase') 'buyPrice': unitPrice,
         'party': party,
         'city': city,
+        'note': note,
+        'transactionDate': Timestamp.fromDate(date),
+        'inventoryAfter': after,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    }
-    await batch.commit();
+    });
+  }
+
+  Future<void> deleteStockMovement({
+    required String transactionId,
+    required String productId,
+    required int change,
+  }) async {
+    final inventory = _firestore.collection('inventory').doc(productId);
+    final movement = _firestore.collection('transactions').doc(transactionId);
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(inventory);
+      if (!snapshot.exists) throw StateError('Product no longer exists.');
+      final current = (snapshot.data()?['quantity'] as num?)?.toInt() ?? 0;
+      final after = current - change;
+      if (after < 0) throw StateError('Cannot delete this purchase because its stock has already been used.');
+      transaction.update(inventory, {
+        'quantity': after,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.delete(movement);
+    });
   }
 }

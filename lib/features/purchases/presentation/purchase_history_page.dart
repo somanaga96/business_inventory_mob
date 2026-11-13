@@ -4,8 +4,15 @@ import 'package:excel_plus/excel_plus.dart' as xlsx;
 import 'package:pdf/widgets.dart' as pw;
 
 class PurchaseHistoryPage extends StatefulWidget {
-  const PurchaseHistoryPage({super.key, required this.controller});
+  const PurchaseHistoryPage({
+    super.key,
+    required this.controller,
+    required this.language,
+    required this.products,
+  });
   final InventoryController controller;
+  final ProductNameLanguage language;
+  final List<Product> products;
 
   @override
   State<PurchaseHistoryPage> createState() => _PurchaseHistoryPageState();
@@ -17,10 +24,34 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   String query = '';
   String? expandedId;
 
+  bool get _isTamil => widget.language == ProductNameLanguage.tamil;
+  String _text(String english, String tamil) => _isTamil ? tamil : english;
+  String _productName(Map<String, dynamic> data) {
+    final productId = data['productId']?.toString();
+    for (final product in widget.products) {
+      if (product.id == productId) return product.nameFor(widget.language);
+    }
+    return '${data['productName'] ?? 'Product'}';
+  }
+
   String _date(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   String _shortDate(DateTime d) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (_isTamil) return _date(d);
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${d.day.toString().padLeft(2, '0')}_${months[d.month - 1]}';
   }
   DateTime? _when(Map<String, dynamic> d) {
@@ -46,8 +77,9 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
       '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'damage';
   bool _isPurchaseOrDamage(Map<String, dynamic> d) =>
       _isPurchase(d) || _isDamage(d);
-  String _movementLabel(Map<String, dynamic> d) =>
-      _isDamage(d) ? 'Damage / loss' : 'Purchase';
+  String _movementLabel(Map<String, dynamic> d) => _isDamage(d)
+      ? _text('Damage / loss', 'சேதம் / இழப்பு')
+      : _text('Purchase', 'கொள்முதல்');
   String _short(String value, int maxLength) =>
       value.length <= maxLength ? value : '${value.substring(0, maxLength - 1)}.';
 
@@ -68,6 +100,59 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     });
   }
 
+  int _change(Map<String, dynamic> data) =>
+      (data['change'] as num?)?.toInt() ?? (_isPurchase(data) ? _qty(data) : -_qty(data));
+
+  Future<void> _editMovement(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    final quantity = TextEditingController(text: '${_qty(data)}');
+    final price = TextEditingController(text: _price(data).toStringAsFixed(2));
+    final party = TextEditingController(text: '${data['party'] ?? ''}');
+    final city = TextEditingController(text: '${data['city'] ?? ''}');
+    final note = TextEditingController(text: '${data['note'] ?? ''}');
+    DateTime date = _when(data) ?? DateTime.now();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: Text('Edit ${_movementLabel(data).toLowerCase()}'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_productName(data), style: const TextStyle(fontWeight: FontWeight.w700)),
+          TextField(controller: quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Quantity')),
+          if (_isPurchase(data)) TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Buy price')),
+          TextField(controller: party, decoration: const InputDecoration(labelText: 'Supplier / party')),
+          TextField(controller: city, decoration: const InputDecoration(labelText: 'City / village')),
+          TextField(controller: note, decoration: const InputDecoration(labelText: 'Note')),
+          TextButton.icon(onPressed: () async { final picked = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2100), initialDate: date); if (picked != null) setDialogState(() => date = picked); }, icon: const Icon(Icons.calendar_today_outlined), label: Text(_date(date))),
+        ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Save'))],
+      )),
+    );
+    if (save == true) {
+      final newQuantity = int.tryParse(quantity.text) ?? 0;
+      final newPrice = _isPurchase(data) ? double.tryParse(price.text) : _price(data);
+      if (newQuantity <= 0 || newPrice == null || newPrice < 0) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid quantity and price.')));
+      } else {
+        try {
+          await widget.controller.updateStockMovement(transactionId: doc.id, productId: '${data['productId']}', oldChange: _change(data), quantity: newQuantity, type: '${data['type']}', unitPrice: newPrice, party: party.text.trim(), city: city.text.trim(), note: note.text.trim(), date: date);
+        } on StateError catch (error) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message.toString())));
+        }
+      }
+    }
+    for (final controller in [quantity, price, party, city, note]) { controller.dispose(); }
+  }
+
+  Future<void> _deleteMovement(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Delete movement?'), content: Text('Delete ${_productName(doc.data())}? Stock will be adjusted.'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete'))]));
+    if (confirmed != true) return;
+    try {
+      await widget.controller.deleteStockMovement(transactionId: doc.id, productId: '${doc.data()['productId']}', change: _change(doc.data()));
+    } on StateError catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message.toString())));
+    }
+  }
+
   Future<void> _printOne(Map<String, dynamic> d) async {
     final g = Generator(ThermalReceiptPrinter.paperSize, await CapabilityProfile.load());
     final date = _when(d);
@@ -77,7 +162,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     bytes.addAll(g.hr());
     bytes.addAll(await ThermalReceiptPrinter.receiptText(
       g,
-      'Product: ${d['productName'] ?? 'Product'}',
+      'Product: ${_productName(d)}',
       styles: ThermalReceiptPrinter.normalStyle,
     ));
     bytes.addAll(g.text('Date: ${date == null ? '-' : _date(date)}  Time: ${_time(d)}', styles: ThermalReceiptPrinter.normalStyle));
@@ -108,25 +193,33 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     bytes.addAll(g.text('Purchase & damage summary', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.text('${_date(from)} - ${_date(to)}', styles: ThermalReceiptPrinter.centerStyle));
     bytes.addAll(g.hr());
-    bytes.addAll(g.row([
-      PosColumn(text: 'Product', width: 6, styles: ThermalReceiptPrinter.boldStyle),
-      PosColumn(
-        text: 'Qty x Rate = Total',
-        width: 6,
-        styles: ThermalReceiptPrinter.rightBoldStyle,
-      ),
-    ]));
-    bytes.addAll(g.hr());
-    for (var index = 0; index < docs.length; index++) {
-      final doc = docs[index];
-      final d = doc.data();
-      final title = '${index + 1}. ${_short('${d['productName'] ?? 'Product'}', 18)}';
-      final amount = '${_qty(d)} x ${_price(d).toStringAsFixed(2)} = ${_total(d).toStringAsFixed(2)}';
-      bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
+    final byDate = <DateTime, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    for (final doc in docs) {
+      final value = _when(doc.data()) ?? DateTime.now();
+      final day = DateTime(value.year, value.month, value.day);
+      byDate.putIfAbsent(day, () => []).add(doc);
+    }
+    final dates = byDate.keys.toList()..sort((a, b) => b.compareTo(a));
+    for (final day in dates) {
+      final transactions = byDate[day]!;
+      bytes.addAll(g.hr());
+      bytes.addAll(await ThermalReceiptPrinter.receiptText(
         g,
-        name: title,
-        amount: amount,
+        _date(day),
+        styles: ThermalReceiptPrinter.boldStyle,
       ));
+      bytes.addAll(g.row([
+        PosColumn(text: 'Product', width: 6, styles: ThermalReceiptPrinter.boldStyle),
+        PosColumn(text: 'Qty x Rate = Total', width: 6, styles: ThermalReceiptPrinter.rightBoldStyle),
+      ]));
+      for (var index = 0; index < transactions.length; index++) {
+        final d = transactions[index].data();
+        final title = '${index + 1}. ${_short(_productName(d), 18)}';
+        final amount = '${_qty(d)} x ${_price(d).toStringAsFixed(2)} = ${_total(d).toStringAsFixed(2)}';
+        bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(g, name: title, amount: amount));
+      }
+      final dailyTotal = transactions.fold<double>(0, (total, doc) => total + _total(doc.data()));
+      bytes.addAll(g.text('Date total: Rs ${dailyTotal.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightStyle));
     }
     bytes.addAll(g.hr());
     bytes.addAll(g.text('TOTAL PURCHASE: Rs ${sum.toStringAsFixed(2)}', styles: ThermalReceiptPrinter.rightBoldStyle));
@@ -198,20 +291,59 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
         byDate.putIfAbsent(day, () => []).add(doc);
       }
       return ResponsivePage(horizontalPaddingFactor: .015, children: [
-        const Text('Purchase & damage history', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
+        Text(
+          _text('Purchase & damage history', 'கொள்முதல் மற்றும் சேத வரலாறு'),
+          style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 6),
         const SizedBox(height: 18),
-        Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => _pick(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('From ${_date(from)}'))), const SizedBox(width: 10), Expanded(child: OutlinedButton.icon(onPressed: () => _pick(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('To ${_date(to)}')))]),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pick(true),
+                icon: const Icon(Icons.calendar_today_outlined),
+                label: Text('${_text('From', 'முதல்')} ${_date(from)}'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pick(false),
+                icon: const Icon(Icons.calendar_today_outlined),
+                label: Text('${_text('To', 'வரை')} ${_date(to)}'),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
-        Row(children: [Expanded(child: OutlinedButton.icon(onPressed: docs.isEmpty ? null : () => _export(docs), icon: const Icon(Icons.file_download_outlined), label: const Text('Export'))), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: docs.isEmpty ? null : () => _printAll(docs), icon: const Icon(Icons.print_outlined), label: const Text('Print')))]),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: docs.isEmpty ? null : () => _export(docs),
+                icon: const Icon(Icons.file_download_outlined),
+                label: Text(_text('Export', 'ஏற்றுமதி')),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: docs.isEmpty ? null : () => _printAll(docs),
+                icon: const Icon(Icons.print_outlined),
+                label: Text(_text('Print', 'அச்சிடு')),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 14),
-        TextField(onChanged: (v) => setState(() => query = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search product, supplier or note', border: OutlineInputBorder())),
+        TextField(onChanged: (v) => setState(() => query = v), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: _text('Search product, supplier or note', 'பொருள், வழங்குநர் அல்லது குறிப்பைத் தேடவும்'), border: const OutlineInputBorder())),
         const SizedBox(height: 14),
-        Card(child: ListTile(leading: const Icon(Icons.shopping_bag_outlined, color: primary), title: Text('${docs.length} movement ${docs.length == 1 ? 'entry' : 'entries'}'), trailing: Text('Rs ${sum.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)))),
+        Card(child: ListTile(leading: const Icon(Icons.shopping_bag_outlined, color: primary), title: Text(_isTamil ? '${docs.length} பதிவுகள்' : '${docs.length} movement ${docs.length == 1 ? 'entry' : 'entries'}'), trailing: Text('Rs ${sum.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)))),
         const SizedBox(height: 10),
-        if (snapshot.hasError) const Card(child: ListTile(leading: Icon(Icons.error_outline), title: Text('Unable to load purchase history.'))),
+        if (snapshot.hasError) Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(_text('Unable to load purchase history.', 'கொள்முதல் வரலாற்றை ஏற்ற முடியவில்லை.')))),
         if (!snapshot.hasData) const Center(child: Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator())),
-        if (snapshot.hasData && docs.isEmpty) const Card(child: ListTile(leading: Icon(Icons.receipt_long_outlined), title: Text('No purchases or damage in this date range'), subtitle: Text('Change the dates or record a stock movement from the Purchase tab.'))),
+        if (snapshot.hasData && docs.isEmpty) Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(_text('No purchases or damage in this date range', 'இந்த தேதி வரம்பில் கொள்முதல் அல்லது சேதப் பதிவுகள் இல்லை')), subtitle: Text(_text('Change the dates or record a stock movement from the Purchase tab.', 'தேதிகளை மாற்றவும் அல்லது கொள்முதல் பக்கத்தில் இருப்பு நகர்வைப் பதிவு செய்யவும்.')))),
         ...byDate.entries.map((entry) => Column(children: [
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 6),
@@ -231,25 +363,51 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
               children: [
                 TableRow(
                   decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  children: const [
-                    _PurchaseTableCell('+/-', header: true, right: true),
-                    _PurchaseTableCell('Product', header: true),
-                    _PurchaseTableCell('Qty', header: true, right: true),
-                    _PurchaseTableCell('Price', header: true, right: true),
-                    _PurchaseTableCell('Amount', header: true, right: true),
+                  children: [
+                    const _PurchaseTableCell('+/-', header: true, right: true),
+                    _PurchaseTableCell(_text('Product', 'பொருள்'), header: true),
+                    _PurchaseTableCell(_text('Qty', 'அளவு'), header: true, right: true),
+                    _PurchaseTableCell(_text('Price', 'விலை'), header: true, right: true),
+                    _PurchaseTableCell(_text('Amount', 'தொகை'), header: true, right: true),
                   ],
                 ),
                 ...entry.value.map((doc) {
                   final data = doc.data();
                   return TableRow(children: [
                     _PurchaseTableCell(_isDamage(data) ? '−' : '+', right: true),
-                    _PurchaseTableCell('${data['productName'] ?? 'Product'}'),
+                    _PurchaseTableCell(_productName(data)),
                     _PurchaseTableCell('${_qty(data)}', right: true),
                     _PurchaseTableCell(_price(data).toStringAsFixed(2), right: true),
                     _PurchaseTableCell(_total(data).toStringAsFixed(2), right: true),
                   ]);
                 }),
               ],
+            ),
+          ),
+          ...entry.value.map(
+            (doc) => Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _productName(doc.data()),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _editMovement(doc),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _deleteMovement(doc),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    label: const Text('Delete'),
+                  ),
+                ],
+              ),
             ),
           ),
         ])),
@@ -270,7 +428,11 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
 }
 
 class _PurchaseTableCell extends StatelessWidget {
-  const _PurchaseTableCell(this.value, {this.header = false, this.right = false});
+  const _PurchaseTableCell(
+    this.value, {
+    this.header = false,
+    this.right = false,
+  });
 
   final String value;
   final bool header;
@@ -278,13 +440,13 @@ class _PurchaseTableCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Text(
-      value,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      textAlign: right ? TextAlign.right : TextAlign.left,
-      style: TextStyle(fontSize: header ? 12 : 13, fontWeight: header ? FontWeight.w700 : null),
-    ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Text(
+        value,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        textAlign: right ? TextAlign.right : TextAlign.left,
+        style: TextStyle(fontSize: header ? 12 : 13, fontWeight: header ? FontWeight.w700 : null),
+      ),
   );
 }

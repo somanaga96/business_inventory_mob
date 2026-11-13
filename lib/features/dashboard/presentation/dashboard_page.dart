@@ -14,6 +14,7 @@ class Dashboard extends StatelessWidget {
     final value = products.fold(0.0, (a, p) => a + p.cost * p.quantity);
     final low = products.where((p) => p.low).length;
     return ResponsivePage(
+      bottomPaddingFactor: .08,
       children: [
         const Text(
           'Overview',
@@ -77,11 +78,13 @@ class Dashboard extends StatelessWidget {
     super.key,
     required this.products,
     required this.controller,
+    required this.language,
     required this.openTab,
   });
 
   final List<Product> products;
   final InventoryController controller;
+  final ProductNameLanguage language;
   final ValueChanged<int> openTab;
 
   @override
@@ -96,35 +99,56 @@ class Dashboard extends StatelessWidget {
       children: [
         BillsOverviewCard(controller: controller, openBills: () => openTab(6)),
         const SizedBox(height: 14),
+        InventorySummaryBanner(
+          value: value,
+          language: language,
+          onTap: () => openTab(2),
+        ),
+        const SizedBox(height: 12),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
+          // Keep every metric comfortably tall on narrow phones. The grid can
+          // scroll with the page, so preserving readable card content is more
+          // important than forcing a short fixed row height.
           childAspectRatio: 1.55,
           children: [
             Metric(
-              'Total products',
+              language == ProductNameLanguage.tamil
+                  ? 'பொருள் எண்ணிக்கை'
+                  : 'Total products',
               '${products.length}',
               Icons.inventory_2_outlined,
               primary,
               onTap: () => openTab(1),
             ),
-            InventorySummaryMetric(value: value, onTap: () => openTab(2)),
             Metric(
-              'Products in stock',
+              language == ProductNameLanguage.tamil
+                  ? 'பொருள் இருப்பு'
+                  : 'Products in stock',
               '$inStock',
               Icons.check_circle_outline,
               const Color(0xFF22B573),
               onTap: () => openTab(2),
             ),
             Metric(
-              'Stock alerts',
+              language == ProductNameLanguage.tamil
+                  ? 'இருப்பு எச்சரிக்கைகள்'
+                  : 'Stock alerts',
               '$lowStock',
               Icons.warning_amber_rounded,
               const Color(0xFFF59E0B),
               onTap: () => openTab(7),
+            ),
+            Metric(
+              'Business summary',
+              'View',
+              Icons.insights_outlined,
+              const Color(0xFF06B6D4),
+              onTap: () => openTab(8),
             ),
           ],
         ),
@@ -401,18 +425,22 @@ class DashboardPill extends StatelessWidget {
   );
 }
 
-class InventorySummaryMetric extends StatelessWidget {
-  const InventorySummaryMetric({
+class InventorySummaryBanner extends StatelessWidget {
+  const InventorySummaryBanner({
     super.key,
     required this.value,
+    required this.language,
     required this.onTap,
   });
 
   final double value;
+  final ProductNameLanguage language;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => SizedBox(
+    height: 110,
+    child: Card(
     elevation: 0,
     clipBehavior: Clip.antiAlias,
     color: primary.withValues(alpha: .035),
@@ -423,22 +451,30 @@ class InventorySummaryMetric extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(Icons.account_balance_wallet_outlined, color: primary),
             const Spacer(),
-            Text(
-              'Rs ${value.toStringAsFixed(0)}',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: Theme.of(context).colorScheme.onSurface,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Rs ${value.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
             Text(
-              'Inventory',
+              language == ProductNameLanguage.tamil
+                  ? 'பொருள் இருப்பு மதிப்பு'
+                  : 'Inventory value',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -447,6 +483,7 @@ class InventorySummaryMetric extends StatelessWidget {
           ],
         ),
       ),
+    ),
     ),
   );
 }
@@ -476,18 +513,22 @@ class Metric extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, color: color),
             const Spacer(),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: Theme.of(context).colorScheme.onSurface,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
             Text(
@@ -495,7 +536,7 @@ class Metric extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),

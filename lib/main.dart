@@ -386,6 +386,7 @@ class _InventoryHomeState extends State<InventoryHome> {
         Dashboard(
           products: products,
           controller: controller,
+          language: productLanguage,
           openTab: (index) => setState(() => tab = index),
         ),
         Products(
@@ -401,7 +402,11 @@ class _InventoryHomeState extends State<InventoryHome> {
           submit: recordTransaction,
           language: productLanguage,
         ),
-        PurchaseHistoryPage(controller: controller),
+        PurchaseHistoryPage(
+          controller: controller,
+          language: productLanguage,
+          products: products,
+        ),
         Bills(
           products: products,
           submit: recordTransaction,
@@ -415,7 +420,11 @@ class _InventoryHomeState extends State<InventoryHome> {
         ),
         Alerts(products: products, language: productLanguage),
         BusinessSummary(controller: controller),
-        HistoryPage(controller: controller),
+        HistoryPage(
+          controller: controller,
+          language: productLanguage,
+          products: products,
+        ),
       ];
       return Scaffold(
         appBar: AppBar(

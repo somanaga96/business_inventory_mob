@@ -5,10 +5,12 @@ class ResponsivePage extends StatelessWidget {
     super.key,
     required this.children,
     this.horizontalPaddingFactor = .05,
+    this.bottomPaddingFactor = .12,
   });
 
   final List<Widget> children;
   final double horizontalPaddingFactor;
+  final double bottomPaddingFactor;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +20,7 @@ class ResponsivePage extends StatelessWidget {
         size.width * horizontalPaddingFactor,
         size.height * .03,
         size.width * horizontalPaddingFactor,
-        size.height * .12,
+        size.height * bottomPaddingFactor,
       ),
       children: children,
     );

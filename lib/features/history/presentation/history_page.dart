@@ -2,9 +2,16 @@ import '../../../app_exports.dart';
 
 /// One place to review every stock and sales movement.
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key, required this.controller});
+  const HistoryPage({
+    super.key,
+    required this.controller,
+    required this.language,
+    required this.products,
+  });
 
   final InventoryController controller;
+  final ProductNameLanguage language;
+  final List<Product> products;
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -14,6 +21,16 @@ class _HistoryPageState extends State<HistoryPage> {
   DateTime from = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime to = DateTime.now();
   String filter = 'All';
+
+  bool get _isTamil => widget.language == ProductNameLanguage.tamil;
+  String _text(String english, String tamil) => _isTamil ? tamil : english;
+  String _productName(Map<String, dynamic> data) {
+    final productId = data['productId']?.toString();
+    for (final product in widget.products) {
+      if (product.id == productId) return product.nameFor(widget.language);
+    }
+    return '${data['productName'] ?? 'Product'}';
+  }
 
   DateTime? _when(Map<String, dynamic> data) {
     final value = data['transactionDate'] ?? data['createdAt'];
@@ -160,17 +177,25 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
     ]));
     bytes.addAll(generator.text('CATEGORY: $filter', styles: ThermalReceiptPrinter.centerStyle));
-    bytes.addAll(generator.hr());
-    bytes.addAll(generator.row([
-      PosColumn(text: '+/- | PRODUCT', width: 6, styles: ThermalReceiptPrinter.boldStyle),
-      PosColumn(text: 'QTY x PRICE = AMOUNT', width: 6, styles: ThermalReceiptPrinter.rightStyle),
-    ]));
-    bytes.addAll(generator.hr());
-    for (final doc in entries) {
+    final sortedEntries = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(entries)
+      ..sort((a, b) => (_when(b.data()) ?? DateTime(0)).compareTo(_when(a.data()) ?? DateTime(0)));
+    DateTime? printedDay;
+    for (final doc in sortedEntries) {
       final data = doc.data();
       final quantity = _quantity(data);
       final price = _price(data);
       final total = quantity * price;
+      final date = _when(data) ?? DateTime.now();
+      final day = DateTime(date.year, date.month, date.day);
+      if (printedDay != day) {
+        printedDay = day;
+        bytes.addAll(generator.hr());
+        bytes.addAll(generator.text(_date(day), styles: ThermalReceiptPrinter.boldStyle));
+        bytes.addAll(generator.row([
+          PosColumn(text: '+/- | PRODUCT', width: 6, styles: ThermalReceiptPrinter.boldStyle),
+          PosColumn(text: 'QTY x PRICE = AMOUNT', width: 6, styles: ThermalReceiptPrinter.rightStyle),
+        ]));
+      }
       switch (_type(data)) {
         case 'purchase':
           purchaseTotal += total;
@@ -185,7 +210,7 @@ class _HistoryPageState extends State<HistoryPage> {
       }
       bytes.addAll(await ThermalReceiptPrinter.receiptItemRow(
         generator,
-        name: '${_movementSymbol(data)} | ${data['productName'] ?? 'Product'}',
+        name: '${_movementSymbol(data)} | ${_productName(data)}',
         amount: '$quantity × ${price.toStringAsFixed(2)} = ${total.toStringAsFixed(2)}',
       ));
     }
@@ -242,21 +267,21 @@ class _HistoryPageState extends State<HistoryPage> {
       return ResponsivePage(
         horizontalPaddingFactor: .015,
         children: [
-          const Text('History', style: TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
+          Text(_text('History', 'வரலாறு'), style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          const Text('Purchases, orders, damage, and stolen stock in one place.'),
+          Text(_text('Purchases, orders, damage, and stolen stock in one place.', 'கொள்முதல், ஆர்டர்கள், சேதம் மற்றும் திருடப்பட்ட இருப்புகள் ஒரே இடத்தில்.')),
           const SizedBox(height: 18),
           Row(
             children: [
-              Expanded(child: OutlinedButton.icon(onPressed: () => _pickDate(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('From ${_date(from)}'))),
+              Expanded(child: OutlinedButton.icon(onPressed: () => _pickDate(true), icon: const Icon(Icons.calendar_today_outlined), label: Text('${_text('From', 'முதல்')} ${_date(from)}'))),
               const SizedBox(width: 10),
-              Expanded(child: OutlinedButton.icon(onPressed: () => _pickDate(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('To ${_date(to)}'))),
+              Expanded(child: OutlinedButton.icon(onPressed: () => _pickDate(false), icon: const Icon(Icons.calendar_today_outlined), label: Text('${_text('To', 'வரை')} ${_date(to)}'))),
             ],
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: filter,
-            decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: _text('Category', 'வகை'), border: const OutlineInputBorder()),
             items: const ['All', 'Purchases', 'Orders', 'Damage', 'Stolen', 'Adjustments']
                 .map((value) => DropdownMenuItem(value: value, child: Text(value)))
                 .toList(),
@@ -269,7 +294,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 child: OutlinedButton.icon(
                   onPressed: entries.isEmpty ? null : () => _export(entries),
                   icon: const Icon(Icons.file_download_outlined),
-                  label: const Text('Export'),
+                  label: Text(_text('Export', 'ஏற்றுமதி')),
                 ),
               ),
               const SizedBox(width: 10),
@@ -277,15 +302,15 @@ class _HistoryPageState extends State<HistoryPage> {
                 child: FilledButton.icon(
                   onPressed: entries.isEmpty ? null : () => _printWithFeedback(entries),
                   icon: const Icon(Icons.print_outlined),
-                  label: const Text('Print'),
+                  label: Text(_text('Print', 'அச்சிடு')),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
           if (!snapshot.hasData) const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
-          if (snapshot.hasError) const Card(child: ListTile(leading: Icon(Icons.error_outline), title: Text('Unable to load history.'))),
-          if (snapshot.hasData && entries.isEmpty) const Card(child: ListTile(leading: Icon(Icons.history_outlined), title: Text('No matching history'), subtitle: Text('Try a different date range or category.'))),
+          if (snapshot.hasError) Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(_text('Unable to load history.', 'வரலாற்றை ஏற்ற முடியவில்லை.')))),
+          if (snapshot.hasData && entries.isEmpty) Card(child: ListTile(leading: const Icon(Icons.history_outlined), title: Text(_text('No matching history', 'பொருந்தும் வரலாறு இல்லை')), subtitle: Text(_text('Try a different date range or category.', 'வேறு தேதி வரம்பு அல்லது வகையை முயற்சிக்கவும்.')))),
           ...byDate.entries.map((entry) => Column(children: [
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 6),
@@ -305,12 +330,12 @@ class _HistoryPageState extends State<HistoryPage> {
                 children: [
                   TableRow(
                     decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                    children: const [
-                      _HistoryTableCell('+/-', header: true, right: true),
-                      _HistoryTableCell('Product', header: true),
-                      _HistoryTableCell('Qty', header: true, right: true),
-                      _HistoryTableCell('Price', header: true, right: true),
-                      _HistoryTableCell('Amount', header: true, right: true),
+                  children: [
+                      const _HistoryTableCell('+/-', header: true, right: true),
+                      _HistoryTableCell(_text('Product', 'பொருள்'), header: true),
+                      _HistoryTableCell(_text('Qty', 'அளவு'), header: true, right: true),
+                      _HistoryTableCell(_text('Price', 'விலை'), header: true, right: true),
+                      _HistoryTableCell(_text('Amount', 'தொகை'), header: true, right: true),
                     ],
                   ),
                   ...entry.value.map((doc) {
@@ -319,7 +344,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     final price = _price(data);
                     return TableRow(children: [
                       _HistoryTableCell(_movementSymbol(data), right: true),
-                      _HistoryTableCell('${data['productName'] ?? 'Product'}'),
+                      _HistoryTableCell(_productName(data)),
                       _HistoryTableCell('$quantity', right: true),
                       _HistoryTableCell(price.toStringAsFixed(2), right: true),
                       _HistoryTableCell((quantity * price).toStringAsFixed(2), right: true),

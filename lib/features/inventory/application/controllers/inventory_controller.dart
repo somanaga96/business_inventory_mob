@@ -112,4 +112,38 @@ class InventoryController {
     required String party,
     required String city,
   }) => _dataSource.updateSaleOrder(items: items, party: party, city: city);
+
+  Future<void> updateStockMovement({
+    required String transactionId,
+    required String productId,
+    required int oldChange,
+    required int quantity,
+    required String type,
+    required double unitPrice,
+    required String party,
+    required String city,
+    required String note,
+    required DateTime date,
+  }) => _dataSource.updateStockMovement(
+    transactionId: transactionId,
+    productId: productId,
+    oldChange: oldChange,
+    quantity: quantity,
+    type: type,
+    unitPrice: unitPrice,
+    party: party,
+    city: city,
+    note: note,
+    date: date,
+  );
+
+  Future<void> deleteStockMovement({
+    required String transactionId,
+    required String productId,
+    required int change,
+  }) => _dataSource.deleteStockMovement(
+    transactionId: transactionId,
+    productId: productId,
+    change: change,
+  );
 }
