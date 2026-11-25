@@ -1,12 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-
 import 'core/theme/app_theme.dart';
 import 'core/services/app_session.dart';
 import 'core/services/thermal_receipt_printer.dart';
@@ -52,7 +50,7 @@ class InventoryProApp extends StatefulWidget {
 }
 
 class _InventoryProAppState extends State<InventoryProApp> {
-  ThemeMode themeMode = ThemeMode.system;
+  ThemeMode themeMode = ThemeMode.light;
   AppUser? currentUser;
   bool sessionReady = false;
 
@@ -63,9 +61,11 @@ class _InventoryProAppState extends State<InventoryProApp> {
   }
 
   Future<void> _restoreSession() async {
+    final savedDarkTheme = await AppSession.readDarkTheme();
     final username = await AppSession.readUsername();
     if (!mounted) return;
     setState(() {
+      themeMode = savedDarkTheme == true ? ThemeMode.dark : ThemeMode.light;
       currentUser = switch (username) {
         'admin' => const AppUser(username: 'admin', role: UserRole.admin),
         'sales' => const AppUser(username: 'sales', role: UserRole.sales),
@@ -91,7 +91,9 @@ class _InventoryProAppState extends State<InventoryProApp> {
     final isDark =
         themeMode == ThemeMode.dark ||
         (themeMode == ThemeMode.system && systemBrightness == Brightness.dark);
-    setState(() => themeMode = isDark ? ThemeMode.light : ThemeMode.dark);
+    final nextMode = isDark ? ThemeMode.light : ThemeMode.dark;
+    setState(() => themeMode = nextMode);
+    AppSession.saveDarkTheme(nextMode == ThemeMode.dark);
   }
 
   @override
@@ -412,6 +414,7 @@ class _InventoryHomeState extends State<InventoryHome> {
           products: products,
           language: productLanguage,
         ),
+        CumulativeHistoryPage(controller: controller, products: products),
         Alerts(products: products, language: productLanguage),
         BusinessSummary(controller: controller),
         HistoryPage(
@@ -419,7 +422,6 @@ class _InventoryHomeState extends State<InventoryHome> {
           language: productLanguage,
           products: products,
         ),
-        CumulativeHistoryPage(controller: controller, products: products),
       ];
       return Scaffold(
         appBar: AppBar(
@@ -553,10 +555,10 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Purchase history',
                   'Orders',
                   'Order history',
+                  'Sales order cumulative',
                   'Alerts',
                   'Business summary',
                   'History',
-                  'Cumulative history',
                 ].asMap().entries.map(
                   (entry) => ListTile(
                     selected: tab == entry.key,
@@ -570,10 +572,10 @@ class _InventoryHomeState extends State<InventoryHome> {
                         Icons.history,
                         Icons.receipt_long_outlined,
                         Icons.receipt_long,
+                        Icons.summarize_outlined,
                         Icons.warning_amber_outlined,
                         Icons.insights_outlined,
                         Icons.history_outlined,
-                        Icons.summarize_outlined,
                       ][entry.key],
                       color: tab == entry.key ? primary : null,
                     ),

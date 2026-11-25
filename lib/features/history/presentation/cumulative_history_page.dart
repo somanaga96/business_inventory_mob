@@ -41,7 +41,7 @@ class _CumulativeHistoryPageState extends State<CumulativeHistoryPage> {
       }
       final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
       return ResponsivePage(children: [
-        const Text('Cumulative history', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+        const Text('Sales order cumulative', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
         const Text('Daily totals grouped by product.', style: TextStyle(color: Color(0xFF8493AD))),
         Row(children: [
@@ -54,7 +54,14 @@ class _CumulativeHistoryPageState extends State<CumulativeHistoryPage> {
         ...dates.map((date) => Card(child: ExpansionTile(title: Text(date, style: const TextStyle(fontWeight: FontWeight.w800)), initiallyExpanded: true, children: [
           SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
             columns: const [DataColumn(label: Text('Name')), DataColumn(label: Text('Quantity')), DataColumn(label: Text('Amount'))],
-            rows: grouped[date]!.entries.map((e) => DataRow(cells: [DataCell(Text(e.key)), DataCell(Text('${e.value.quantity}')), DataCell(Text('Rs ${e.value.value.toStringAsFixed(2)}'))])).toList(),
+            rows: [
+              ...grouped[date]!.entries.map((e) => DataRow(cells: [DataCell(Text(e.key)), DataCell(Text('${e.value.quantity}')), DataCell(Text('Rs ${e.value.value.toStringAsFixed(2)}'))])),
+              DataRow(cells: [
+                const DataCell(Text('Total', style: TextStyle(fontWeight: FontWeight.w800))),
+                DataCell(Text('${grouped[date]!.values.fold<int>(0, (totalQuantity, item) => totalQuantity + item.quantity)}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                DataCell(Text('Rs ${grouped[date]!.values.fold<double>(0, (totalAmount, item) => totalAmount + item.value).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800))),
+              ]),
+            ],
           )),
         ]))),
       ]);
