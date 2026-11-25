@@ -7,6 +7,20 @@ class Stock extends StatelessWidget {
   final ProductNameLanguage language;
   @override
   Widget build(BuildContext context) {
+    int? traySizeFor(Product product) {
+      final name = product.displayName.toLowerCase();
+      if (name.contains('egg') ||
+          name.contains('sting') ||
+          name.contains('sprite') ||
+          name.contains('thumsup') ||
+          name.contains('thumbsup') ||
+          name.contains('nimbu')) {
+        return 30;
+      }
+      if (name.contains('jeera soda')) return 24;
+      return null;
+    }
+
     final inStockProducts = products
         .where((product) => product.quantity > 0)
         .toList();
@@ -73,6 +87,14 @@ class Stock extends StatelessWidget {
                         '${p.quantity} x Rs ${p.cost.toStringAsFixed(2)} avg. cost',
                         style: const TextStyle(color: Color(0xFF71809A)),
                       ),
+                      if (traySizeFor(p) != null)
+                        Text(
+                          '${(p.quantity / traySizeFor(p)!).toStringAsFixed(2)} trays (${traySizeFor(p)} units per tray)',
+                          style: const TextStyle(
+                            color: Color(0xFFC17700),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                     ],
                   ),
                 ),

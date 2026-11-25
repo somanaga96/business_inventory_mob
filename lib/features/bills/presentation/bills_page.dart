@@ -39,6 +39,7 @@ class _BillsState extends State<Bills> {
   int billSequence = 1;
   late String billNumber;
   bool billNumberReady = false;
+  bool detailsCollapsed = false;
   _LastCompletedOrder? lastCompletedOrder;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? billSubscription;
   static const months = [
@@ -206,8 +207,20 @@ class _BillsState extends State<Bills> {
     });
   }
 
+  void _collapseDetails() {
+    if (customer.text.trim().isNotEmpty && city.text.trim().isNotEmpty) {
+      setState(() => detailsCollapsed = true);
+    }
+  }
+
   Future<void> complete() async {
     if (cart.isEmpty) return;
+    if (customer.text.trim().isEmpty || city.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shop/customer name and city are required.')),
+      );
+      return;
+    }
     final shouldComplete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -449,7 +462,14 @@ class _BillsState extends State<Bills> {
     }
   }
 
-  Future<void> printBill() async => showDialog(
+  Future<void> printBill() async {
+    if (customer.text.trim().isEmpty || city.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shop/customer name and city are required.')),
+      );
+      return;
+    }
+    await showDialog(
     context: context,
     builder: (c) => AlertDialog(
       title: const Text('Print order'),
@@ -468,25 +488,31 @@ class _BillsState extends State<Bills> {
         ),
       ],
     ),
-  );
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final billNumberWidth = screenWidth * .28;
     final quantityWidth = screenWidth * .18;
+    final detailsEntered = detailsCollapsed &&
+        customer.text.trim().isNotEmpty &&
+        city.text.trim().isNotEmpty;
     return Stack(
       children: [
         ResponsivePage(
           children: [
+        if (!detailsEntered) ...[
         Row(
           children: [
             Expanded(
               child: TextField(
                 controller: customer,
                 decoration: const InputDecoration(
-                  labelText: 'Shop / customer name',
+                  labelText: 'Shop / customer name *',
                   border: OutlineInputBorder(),
                 ),
+                onEditingComplete: _collapseDetails,
               ),
             ),
             const SizedBox(width: 10),
@@ -506,10 +532,27 @@ class _BillsState extends State<Bills> {
         TextField(
           controller: city,
           decoration: const InputDecoration(
-            labelText: 'City / Village',
+            labelText: 'City / Village *',
             border: OutlineInputBorder(),
           ),
+          onEditingComplete: _collapseDetails,
         ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(child: Text('${customer.text} • ${city.text}', style: const TextStyle(fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'Edit customer details',
+                onPressed: () => setState(() => detailsCollapsed = false),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+              SizedBox(
+                width: billNumberWidth,
+                child: Text('Bill no.\n$billNumber', textAlign: TextAlign.right, overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 14),
         Row(
           children: [
@@ -521,7 +564,10 @@ class _BillsState extends State<Bills> {
                 selected: selectedProduct,
                 language: widget.language,
                 subtitle: (item) => '${availableQuantity(item)} available',
-                onSelected: (item) => setState(() => product = item),
+                onSelected: (item) {
+                  _collapseDetails();
+                  setState(() => product = item);
+                },
               ),
             ),
             const SizedBox(width: 10),

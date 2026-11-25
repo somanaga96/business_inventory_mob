@@ -16,6 +16,7 @@ import 'features/bills/presentation/bills_history_page.dart';
 import 'features/bills/presentation/bills_page.dart';
 import 'features/dashboard/presentation/dashboard_page.dart';
 import 'features/history/presentation/history_page.dart';
+import 'features/history/presentation/cumulative_history_page.dart';
 import 'features/inventory/application/controllers/inventory_controller.dart';
 import 'features/inventory/domain/models/product.dart';
 import 'features/inventory/presentation/stock_page.dart';
@@ -299,13 +300,6 @@ class _InventoryHomeState extends State<InventoryHome> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('Orders'),
-            actions: [
-              IconButton(
-                tooltip: 'Logout',
-                onPressed: widget.onLogout,
-                icon: const Icon(Icons.logout),
-              ),
-            ],
           ),
           drawer: Drawer(
             child: SafeArea(
@@ -425,6 +419,7 @@ class _InventoryHomeState extends State<InventoryHome> {
           language: productLanguage,
           products: products,
         ),
+        CumulativeHistoryPage(controller: controller, products: products),
       ];
       return Scaffold(
         appBar: AppBar(
@@ -463,11 +458,6 @@ class _InventoryHomeState extends State<InventoryHome> {
               tooltip: 'Home',
               onPressed: tab == 0 ? null : () => setState(() => tab = 0),
               icon: const Icon(Icons.home_outlined, color: primary),
-            ),
-            IconButton(
-              tooltip: 'Logout',
-              onPressed: widget.onLogout,
-              icon: const Icon(Icons.logout, color: primary),
             ),
           ],
         ),
@@ -566,6 +556,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                   'Alerts',
                   'Business summary',
                   'History',
+                  'Cumulative history',
                 ].asMap().entries.map(
                   (entry) => ListTile(
                     selected: tab == entry.key,
@@ -582,6 +573,7 @@ class _InventoryHomeState extends State<InventoryHome> {
                         Icons.warning_amber_outlined,
                         Icons.insights_outlined,
                         Icons.history_outlined,
+                        Icons.summarize_outlined,
                       ][entry.key],
                       color: tab == entry.key ? primary : null,
                     ),
@@ -591,6 +583,12 @@ class _InventoryHomeState extends State<InventoryHome> {
                       Navigator.pop(context);
                     },
                   ),
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('Logout'),
+                  onTap: widget.onLogout,
                 ),
               ],
             ),

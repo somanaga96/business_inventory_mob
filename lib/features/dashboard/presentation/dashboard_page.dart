@@ -111,10 +111,8 @@ class Dashboard extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          // Keep every metric comfortably tall on narrow phones. The grid can
-          // scroll with the page, so preserving readable card content is more
-          // important than forcing a short fixed row height.
-          childAspectRatio: 1.55,
+          // Keep metrics compact so more useful shortcuts fit above the fold.
+          childAspectRatio: 1.95,
           children: [
             Metric(
               language == ProductNameLanguage.tamil
@@ -149,6 +147,20 @@ class Dashboard extends StatelessWidget {
               Icons.insights_outlined,
               const Color(0xFF06B6D4),
               onTap: () => openTab(8),
+            ),
+            Metric(
+              'Purchase history',
+              'View',
+              Icons.shopping_bag_outlined,
+              const Color(0xFF8B5CF6),
+              onTap: () => openTab(4),
+            ),
+            Metric(
+              'Order history',
+              'View',
+              Icons.receipt_long_outlined,
+              const Color(0xFFEC4899),
+              onTap: () => openTab(6),
             ),
           ],
         ),
@@ -208,14 +220,14 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
             child: InkWell(
               onTap: widget.openBills,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             color: primary.withValues(alpha: .10),
                             borderRadius: BorderRadius.circular(12),
@@ -225,7 +237,7 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
                             color: primary,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         const Expanded(
                           child: Text(
                             'Order summary',
@@ -242,7 +254,7 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         IconButton.outlined(
@@ -279,7 +291,7 @@ class _BillsOverviewCardState extends State<BillsOverviewCard> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -438,9 +450,14 @@ class InventorySummaryBanner extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 110,
-    child: Card(
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      // Give the banner enough vertical room for both English and Tamil
+      // labels while keeping it compact on larger screens.
+      final height = (constraints.maxWidth * .16).clamp(104.0, 118.0).toDouble();
+      return SizedBox(
+        height: height,
+        child: Card(
     elevation: 0,
     clipBehavior: Clip.antiAlias,
     color: primary.withValues(alpha: .035),
@@ -455,20 +472,16 @@ class InventorySummaryBanner extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
             const Icon(Icons.account_balance_wallet_outlined, color: primary),
-            const Spacer(),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Rs ${value.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
             Text(
               language == ProductNameLanguage.tamil
                   ? 'பொருள் இருப்பு மதிப்பு'
@@ -480,11 +493,40 @@ class InventorySummaryBanner extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+                ],
+              ),
+            ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: .06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: primary.withValues(alpha: .16)),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Text(
+                  'Rs ${value.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
+      ),
     ),
-    ),
+      );
+    },
   );
 }
 
@@ -517,27 +559,43 @@ class Metric extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color),
-            const Spacer(),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.onSurface,
+            Row(
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withValues(alpha: .16)),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
               ),
             ),
           ],
