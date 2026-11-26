@@ -75,8 +75,10 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
       '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'purchase';
   bool _isDamage(Map<String, dynamic> d) =>
       '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'damage';
+  bool _isExpense(Map<String, dynamic> d) =>
+      '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase() == 'expense';
   bool _isPurchaseOrDamage(Map<String, dynamic> d) =>
-      _isPurchase(d) || _isDamage(d);
+      _isPurchase(d) || _isDamage(d) || _isExpense(d);
   /// Compact movement labels used in the history table: Buy, Sell, and Loss.
   String _movementCode(Map<String, dynamic> d) {
     final type = '${d['type'] ?? d['recordType'] ?? ''}'.toLowerCase();

@@ -90,8 +90,23 @@ class InventoryController {
     note: note,
     date: date,
   );
+  Future<void> recordExpense({
+    required String description,
+    required double amount,
+    required String party,
+    required String city,
+    required String note,
+    required DateTime date,
+  }) => _dataSource.recordExpense(
+    description: description,
+    amount: amount,
+    party: party,
+    city: city,
+    note: note,
+    date: date,
+  );
 
-  Future<void> recordSale({
+  Future<List<String>> recordSale({
     required List<({Product product, int quantity, double unitPrice})> items,
     required String party,
     required String city,
@@ -99,6 +114,24 @@ class InventoryController {
     required DateTime date,
   }) => _dataSource.recordSale(
     items: items,
+    party: party,
+    city: city,
+    billNumber: billNumber,
+    date: date,
+  );
+
+  Future<List<String>> editLastSaleOrder({
+    required List<
+      ({String transactionId, String productId, int oldQuantity, int quantity, double unitPrice})
+    > items,
+    required List<({Product product, int quantity, double unitPrice})> newItems,
+    required String party,
+    required String city,
+    required String billNumber,
+    required DateTime date,
+  }) => _dataSource.editLastSaleOrder(
+    items: items,
+    newItems: newItems,
     party: party,
     city: city,
     billNumber: billNumber,

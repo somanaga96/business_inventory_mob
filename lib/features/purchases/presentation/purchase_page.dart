@@ -1,7 +1,7 @@
 import '../../../app_exports.dart';
 
 class PurchasePage extends StatefulWidget {
-  const PurchasePage({super.key, required this.products, required this.submit, required this.language});
+  const PurchasePage({super.key, required this.products, required this.submit, required this.recordExpense, required this.language});
   final List<Product> products;
   final ProductNameLanguage language;
   final Future<void> Function(
@@ -15,6 +15,7 @@ class PurchasePage extends StatefulWidget {
     DateTime,
   )
   submit;
+  final Future<void> Function(String, double, String, String, String, DateTime) recordExpense;
   @override
   State<PurchasePage> createState() => _PurchasePageState();
 }
@@ -27,6 +28,7 @@ class _PurchasePageState extends State<PurchasePage> {
   final party = TextEditingController();
   final city = TextEditingController();
   final note = TextEditingController();
+  final expenseDescription = TextEditingController();
   DateTime date = DateTime.now();
   bool saving = false;
 
@@ -35,6 +37,7 @@ class _PurchasePageState extends State<PurchasePage> {
   String _text(String english, String tamil) => _isTamil ? tamil : english;
 
   String get _typeLabel => switch (type) {
+    'Expense' => 'Expense / business loss',
     'Damage' => _text('Damage / loss', 'உடைதல்'),
     'Stolen' => _text('Stolen stock', 'திருட்டு'),
     _ => _text('Purchase', 'வாங்குதல்'),
@@ -46,10 +49,35 @@ class _PurchasePageState extends State<PurchasePage> {
     party.dispose();
     city.dispose();
     note.dispose();
+    expenseDescription.dispose();
     super.dispose();
   }
 
   Future<void> save() async {
+    if (type == 'Expense') {
+      final expenseAmount = double.tryParse(price.text) ?? 0;
+      if (expenseDescription.text.trim().isEmpty || expenseAmount <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense description and amount are required.')));
+        return;
+      }
+      setState(() => saving = true);
+      try {
+        await widget.recordExpense(expenseDescription.text.trim(), expenseAmount, party.text.trim(), city.text.trim(), note.text.trim(), date);
+        if (mounted) {
+          setState(() {
+            expenseDescription.clear();
+            price.clear();
+            party.clear();
+            city.clear();
+            note.clear();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense recorded as loss.')));
+        }
+      } finally {
+        if (mounted) setState(() => saving = false);
+      }
+      return;
+    }
     final amount = int.tryParse(quantity.text) ?? 0;
     // Damaged stock is valued at the product's current cost, so recording a
     // loss does not require entering a purchase price.
@@ -160,12 +188,37 @@ class _PurchasePageState extends State<PurchasePage> {
                       value: 'Stolen',
                       child: Text(_text('Stolen stock', 'திருட்டு')),
                     ),
+                    const DropdownMenuItem(
+                      value: 'Expense',
+                      child: Text('Expense / business loss'),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value != null) setState(() => type = value);
                   },
                 ),
                 const SizedBox(height: 14),
+                if (type == 'Expense') ...[
+                  TextField(
+                    controller: expenseDescription,
+                    decoration: const InputDecoration(
+                      labelText: 'Expense description *',
+                      hintText: 'Driver salary, fuel, rent...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: price,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Expense amount *',
+                      prefixText: '₹ ',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ] else ...[
                 ProductSearchField(
                   products: widget.products,
                   selected: selectedValue,
@@ -205,6 +258,7 @@ class _PurchasePageState extends State<PurchasePage> {
                   ),
                 ),
                 if (type != 'Damage' && type != 'Stolen') const SizedBox(height: 14),
+                ],
                 TextField(
                   controller: party,
                   decoration: InputDecoration(

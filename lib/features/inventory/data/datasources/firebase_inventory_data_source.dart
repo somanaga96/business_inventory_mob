@@ -28,7 +28,6 @@ class FirebaseInventoryDataSource {
   Stream<QuerySnapshot<Map<String, dynamic>>> watchTransactions() => _firestore
       .collection('transactions')
       .orderBy('createdAt', descending: true)
-      .limit(50)
       .snapshots();
 
   Stream<QuerySnapshot<Map<String, dynamic>>> watchPurchases() => _firestore
@@ -110,6 +109,7 @@ class FirebaseInventoryDataSource {
           isGreaterThanOrEqualTo: Timestamp.fromDate(start),
         )
         .where('transactionDate', isLessThan: Timestamp.fromDate(end))
+        .orderBy('transactionDate', descending: true)
         .snapshots();
   }
 
@@ -364,8 +364,32 @@ class FirebaseInventoryDataSource {
     });
   }
 
+  /// Records a business expense without changing inventory quantities.
+  Future<void> recordExpense({
+    required String description,
+    required double amount,
+    required String party,
+    required String city,
+    required String note,
+    required DateTime date,
+  }) => _firestore.collection('transactions').add({
+    'productId': '',
+    'productName': description,
+    'quantity': 1,
+    'change': 0,
+    'type': 'Expense',
+    'recordType': 'expense',
+    'unitPrice': amount,
+    'mrp': 0,
+    'party': party,
+    'city': city,
+    'note': note,
+    'transactionDate': Timestamp.fromDate(date),
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+
   /// Saves every line of one bill in a single Firestore batch.
-  Future<void> recordSale({
+  Future<List<String>> recordSale({
     required List<({Product product, int quantity, double unitPrice})> items,
     required String party,
     required String city,
@@ -376,6 +400,7 @@ class FirebaseInventoryDataSource {
     // need a live server round trip. This lets both roles create bills offline
     // and automatically uploads them once the device reconnects.
     final batch = _firestore.batch();
+    final transactionIds = <String>[];
     for (final saleItem in items) {
       final product = saleItem.product;
       if (saleItem.quantity > product.quantity) {
@@ -386,7 +411,9 @@ class FirebaseInventoryDataSource {
         'quantity': FieldValue.increment(-saleItem.quantity),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      batch.set(_firestore.collection('transactions').doc(), {
+      final transaction = _firestore.collection('transactions').doc();
+      transactionIds.add(transaction.id);
+      batch.set(transaction, {
           'productId': product.id,
           'productName': product.name,
           'imageUrl': product.imageUrl,
@@ -407,7 +434,96 @@ class FirebaseInventoryDataSource {
     // Do not wait for a server acknowledgement: when offline this batch is
     // stored in Firestore's local queue, while the order receipt must remain
     // available to print immediately.
-    unawaited(batch.commit());
+    await batch.commit();
+    return transactionIds;
+  }
+
+  /// Updates a just-completed sale and can also add new product lines.
+  Future<List<String>> editLastSaleOrder({
+    required List<
+      ({String transactionId, String productId, int oldQuantity, int quantity, double unitPrice})
+    > items,
+    required List<({Product product, int quantity, double unitPrice})> newItems,
+    required String party,
+    required String city,
+    required String billNumber,
+    required DateTime date,
+  }) async {
+    final stockChanges = <String, int>{};
+    for (final item in items) {
+      stockChanges.update(
+        item.productId,
+        (change) => change + item.oldQuantity - item.quantity,
+        ifAbsent: () => item.oldQuantity - item.quantity,
+      );
+    }
+    for (final item in newItems) {
+      stockChanges.update(
+        item.product.id,
+        (change) => change - item.quantity,
+        ifAbsent: () => -item.quantity,
+      );
+    }
+    final newTransactionReferences = newItems
+        .map((_) => _firestore.collection('transactions').doc())
+        .toList();
+    await _firestore.runTransaction((transaction) async {
+      final inventory = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final productId in stockChanges.keys) {
+        final reference = _firestore.collection('inventory').doc(productId);
+        final snapshot = await transaction.get(reference);
+        if (!snapshot.exists) throw StateError('A product in this order no longer exists.');
+        final current = (snapshot.data()?['quantity'] as num?)?.toInt() ?? 0;
+        if (current + stockChanges[productId]! < 0) {
+          throw StateError('Not enough stock to update this order.');
+        }
+        inventory[productId] = snapshot;
+      }
+      for (final entry in stockChanges.entries) {
+        final current = (inventory[entry.key]!.data()?['quantity'] as num?)?.toInt() ?? 0;
+        transaction.update(_firestore.collection('inventory').doc(entry.key), {
+          'quantity': current + entry.value,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      for (final item in items) {
+        final reference = _firestore.collection('transactions').doc(item.transactionId);
+        if (item.quantity == 0) {
+          transaction.delete(reference);
+        } else {
+          transaction.update(reference, {
+            'quantity': item.quantity,
+            'change': -item.quantity,
+            'unitPrice': item.unitPrice,
+            'party': party,
+            'city': city,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      for (var index = 0; index < newItems.length; index++) {
+        final item = newItems[index];
+        final reference = newTransactionReferences[index];
+        transaction.set(reference, {
+          'productId': item.product.id,
+          'productName': item.product.name,
+          'imageUrl': item.product.imageUrl,
+          'quantity': item.quantity,
+          'change': -item.quantity,
+          'type': 'Sale',
+          'recordType': 'inventory_transaction',
+          'unitPrice': item.unitPrice,
+          'mrp': item.product.cost,
+          'party': party,
+          'city': city,
+          'note': billNumber,
+          'inventoryAfter': (inventory[item.product.id]!.data()?['quantity'] as num?)?.toInt() ?? 0,
+          'transactionDate': Timestamp.fromDate(date),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
+    return newTransactionReferences.map((reference) => reference.id).toList();
   }
 
   /// Corrects an existing sale, restores stock for reductions, and removes

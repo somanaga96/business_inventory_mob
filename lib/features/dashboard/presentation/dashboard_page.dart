@@ -139,14 +139,14 @@ class Dashboard extends StatelessWidget {
               '$lowStock',
               Icons.warning_amber_rounded,
               const Color(0xFFF59E0B),
-              onTap: () => openTab(7),
+              onTap: () => openTab(8),
             ),
             Metric(
               'Business summary',
               'View',
               Icons.insights_outlined,
               const Color(0xFF06B6D4),
-              onTap: () => openTab(8),
+              onTap: () => openTab(9),
             ),
             Metric(
               'Purchase history',

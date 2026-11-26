@@ -7,12 +7,14 @@ class SummaryMetricCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -21,7 +23,10 @@ class SummaryMetricCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       side: BorderSide(color: color.withValues(alpha: .20)),
     ),
-    child: Padding(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,6 +42,7 @@ class SummaryMetricCard extends StatelessWidget {
             style: const TextStyle(color: Color(0xFF8493AD), fontSize: 12),
           ),
         ],
+      ),
       ),
     ),
   );

@@ -904,8 +904,11 @@ class _BillsHistoryState extends State<BillsHistory> {
   String _shortText(String value, int length) =>
       value.length <= length ? value : '${value.substring(0, length - 1)}.';
 
-  String _timeLabel(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  String _timeLabel(DateTime value) {
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final period = value.hour < 12 ? 'AM' : 'PM';
+    return '${hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')} $period';
+  }
 
   void showExportOptions(
     BuildContext context,
@@ -956,7 +959,9 @@ class _BillsHistoryState extends State<BillsHistory> {
   Widget build(
     BuildContext context,
   ) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: widget.controller.transactions,
+    // Query the selected day directly so this page only receives the records
+    // needed for the date the user is viewing.
+    stream: widget.controller.transactionsForDate(selectedDate),
     builder: (context, snapshot) {
       final grouped =
           <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
@@ -1082,9 +1087,14 @@ class _BillsHistoryState extends State<BillsHistory> {
             final firstData = docs.first.data();
             final customerName = '${firstData['party'] ?? ''}'.trim();
             final villageName = '${firstData['city'] ?? ''}'.trim();
+            final rawOrderDate =
+                firstData['transactionDate'] ?? firstData['createdAt'];
+            final orderTime = rawOrderDate is Timestamp
+                ? _timeLabel(rawOrderDate.toDate())
+                : '-';
             final customerDetails = [
-              if (customerName.isNotEmpty) 'Customer: $customerName',
-              if (villageName.isNotEmpty) 'City/Village: $villageName',
+              if (customerName.isNotEmpty) customerName,
+              if (villageName.isNotEmpty) villageName,
             ].join('  ·  ');
             double total = 0;
             for (final doc in docs) {
@@ -1104,9 +1114,17 @@ class _BillsHistoryState extends State<BillsHistory> {
                 subtitle: Text(
                   '${customerDetails.isEmpty ? 'Customer not specified' : customerDetails}\n${docs.length} item(s)',
                 ),
-                trailing: Text(
-                  '₹${total.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                trailing: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(orderTime),
+                    const SizedBox(height: 4),
+                    Text(
+                      '₹${total.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
                 ),
                 children: [
                   Padding(

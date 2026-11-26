@@ -11,6 +11,137 @@ class BusinessSummary extends StatefulWidget {
   State<BusinessSummary> createState() => _BusinessSummaryState();
 }
 
+class _SummaryDetailsPage extends StatefulWidget {
+  const _SummaryDetailsPage({
+    required this.controller,
+    required this.title,
+    required this.types,
+    required this.initialFrom,
+    required this.initialTo,
+  });
+  final InventoryController controller;
+  final String title;
+  final Set<String> types;
+  final DateTime initialFrom;
+  final DateTime initialTo;
+
+  @override
+  State<_SummaryDetailsPage> createState() => _SummaryDetailsPageState();
+}
+
+class _SummaryDetailsPageState extends State<_SummaryDetailsPage> {
+  late DateTime from = widget.initialFrom;
+  late DateTime to = widget.initialTo;
+  String viewMode = 'Individual entries';
+
+  String _date(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+
+  Future<void> _pick(bool isFrom) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? from : to,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isFrom) {
+        from = picked.isAfter(to) ? to : picked;
+      } else {
+        to = picked.isBefore(from) ? from : picked;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(widget.title)),
+    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: widget.controller.transactionsForRange(from, to),
+      builder: (context, snapshot) {
+        final entries = (snapshot.data?.docs ?? []).where((doc) {
+          final type = '${doc.data()['type'] ?? doc.data()['recordType'] ?? ''}'
+              .trim().toLowerCase();
+          return widget.types.contains(type);
+        }).toList()
+          ..sort((a, b) {
+            final aDate = (a.data()['transactionDate'] as Timestamp?)?.toDate() ?? DateTime(0);
+            final bDate = (b.data()['transactionDate'] as Timestamp?)?.toDate() ?? DateTime(0);
+            return bDate.compareTo(aDate);
+          });
+        final total = entries.fold<double>(0, (value, doc) {
+          final data = doc.data();
+          return value + ((data['quantity'] as num?)?.toDouble() ?? 0) *
+              ((data['unitPrice'] as num?)?.toDouble() ?? 0);
+        });
+        final cumulative = <String, ({int quantity, double amount, String type})>{};
+        for (final doc in entries) {
+          final data = doc.data();
+          final name = '${data['productName'] ?? 'Entry'}';
+          final quantity = (data['quantity'] as num?)?.toInt() ?? 0;
+          final amount = quantity * ((data['unitPrice'] as num?)?.toDouble() ?? 0);
+          final old = cumulative[name];
+          cumulative[name] = (
+            quantity: (old?.quantity ?? 0) + quantity,
+            amount: (old?.amount ?? 0) + amount,
+            type: '${data['type'] ?? ''}',
+          );
+        }
+        return ResponsivePage(children: [
+          Row(children: [
+            Expanded(child: OutlinedButton(onPressed: () => _pick(true), child: Text('From ${_date(from)}'))),
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton(onPressed: () => _pick(false), child: Text('To ${_date(to)}'))),
+          ]),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: viewMode,
+            decoration: const InputDecoration(
+              labelText: 'View',
+              border: OutlineInputBorder(),
+            ),
+            items: const ['Individual entries', 'Cumulative']
+                .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => viewMode = value);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          Card(child: ListTile(title: Text('${entries.length} entries'), trailing: Text('Rs ${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)))),
+          if (viewMode == 'Individual entries') ...entries.map((doc) {
+            final data = doc.data();
+            final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
+            final price = (data['unitPrice'] as num?)?.toDouble() ?? 0;
+            final date = (data['transactionDate'] as Timestamp?)?.toDate();
+            final type = '${data['type'] ?? ''}';
+            final isStockLoss = type.toLowerCase() == 'damage' ||
+                type.toLowerCase() == 'stolen';
+            return Card(child: ListTile(
+              title: Text('${data['productName'] ?? 'Entry'}'),
+              subtitle: Text(
+                '$type${date == null ? '' : ' · ${_date(date)}'}'
+                '${isStockLoss ? '\nQty ${quantity.toInt()} · Price Rs ${price.toStringAsFixed(2)}' : ''}',
+              ),
+              trailing: Text('Rs ${(quantity * price).toStringAsFixed(2)}'),
+            ));
+          }),
+          if (viewMode == 'Cumulative') ...cumulative.entries.map((entry) => Card(
+            child: ListTile(
+              title: Text(entry.key),
+              subtitle: Text('${entry.value.type} · Qty ${entry.value.quantity}'),
+              trailing: Text('Rs ${entry.value.amount.toStringAsFixed(2)}'),
+            ),
+          )),
+        ]);
+      },
+    ),
+  );
+}
+
 class _BusinessSummaryState extends State<BusinessSummary> {
   DateTime from = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime to = DateTime.now();
@@ -35,6 +166,18 @@ class _BusinessSummaryState extends State<BusinessSummary> {
     });
   }
 
+  void _openDetails(String title, Set<String> types) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _SummaryDetailsPage(
+        controller: widget.controller,
+        title: title,
+        types: types,
+        initialFrom: from,
+        initialTo: to,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) =>
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -44,6 +187,7 @@ class _BusinessSummaryState extends State<BusinessSummary> {
           var purchases = 0.0;
           var grossProfit = 0.0;
           var stockLoss = 0.0;
+          var expenses = 0.0;
           var itemsSold = 0;
           var saleEntries = 0;
           var purchaseEntries = 0;
@@ -76,11 +220,15 @@ class _BusinessSummaryState extends State<BusinessSummary> {
               case 'stolen':
                 stockLoss += cost * quantity;
                 break;
+              case 'expense':
+                expenses += amount;
+                break;
             }
           }
-          final netCashFlow = sales - purchases - stockLoss;
+          final totalLoss = stockLoss + expenses;
+          final netCashFlow = sales - purchases - totalLoss;
           final profit = grossProfit > 0 ? grossProfit : 0.0;
-          final loss = (grossProfit < 0 ? -grossProfit : 0.0) + stockLoss;
+          final loss = (grossProfit < 0 ? -grossProfit : 0.0) + totalLoss;
           return ResponsivePage(
             children: [
               const Text(
@@ -149,30 +297,42 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                     value: 'Rs ${sales.toStringAsFixed(2)}',
                     icon: Icons.sell_outlined,
                     color: const Color(0xFF168B57),
+                    onTap: () => _openDetails('Sales revenue', {'sale'}),
                   ),
                   SummaryMetricCard(
                     label: 'Purchase spend',
                     value: 'Rs ${purchases.toStringAsFixed(2)}',
                     icon: Icons.shopping_bag_outlined,
                     color: primary,
+                    onTap: () => _openDetails('Purchase spend', {'purchase'}),
                   ),
                   SummaryMetricCard(
                     label: 'Profit',
                     value: 'Rs ${profit.toStringAsFixed(2)}',
                     icon: Icons.trending_up,
                     color: const Color(0xFF168B57),
+                    onTap: () => _openDetails('Profit sales', {'sale'}),
                   ),
                   SummaryMetricCard(
                     label: 'Loss',
                     value: 'Rs ${loss.toStringAsFixed(2)}',
                     icon: Icons.trending_down,
                     color: const Color(0xFFD34C4C),
+                    onTap: () => _openDetails('Loss', {'damage', 'stolen', 'expense'}),
+                  ),
+                  SummaryMetricCard(
+                    label: 'Expenses',
+                    value: 'Rs ${expenses.toStringAsFixed(2)}',
+                    icon: Icons.receipt_long_outlined,
+                    color: const Color(0xFFD34C4C),
+                    onTap: () => _openDetails('Expenses', {'expense'}),
                   ),
                   SummaryMetricCard(
                     label: 'Units sold',
                     value: '$itemsSold',
                     icon: Icons.shopping_cart_outlined,
                     color: const Color(0xFF168B57),
+                    onTap: () => _openDetails('Units sold', {'sale'}),
                   ),
                   StreamBuilder<List<Product>>(
                     stream: widget.controller.products,
@@ -208,6 +368,7 @@ class _BusinessSummaryState extends State<BusinessSummary> {
                       _summaryRow('Selling total', sales, const Color(0xFF168B57)),
                       _summaryRow('Buying total', purchases, primary),
                       _summaryRow('Stock loss', stockLoss, const Color(0xFFD34C4C)),
+                      _summaryRow('Business expenses', expenses, const Color(0xFFD34C4C)),
                       const Divider(height: 22),
                       _summaryRow(
                         'Sales minus purchases',

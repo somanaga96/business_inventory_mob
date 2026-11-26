@@ -40,6 +40,14 @@ class _CumulativeHistoryPageState extends State<CumulativeHistoryPage> {
         grouped[key]![keyProduct] = (quantity: (old?.quantity ?? 0) + quantity, value: (old?.value ?? 0) + quantity * price);
       }
       final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+      final monthTotal = grouped.values.fold<double>(
+        0,
+        (runningTotal, products) => runningTotal +
+            products.values.fold<double>(
+              0,
+              (dailyTotal, item) => dailyTotal + item.value,
+            ),
+      );
       return ResponsivePage(children: [
         const Text('Sales order cumulative', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
@@ -50,8 +58,34 @@ class _CumulativeHistoryPageState extends State<CumulativeHistoryPage> {
           IconButton.outlined(onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right)),
         ]),
         const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.calendar_month_outlined),
+            title: const Text(
+              'Overall month total',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text('${month.month.toString().padLeft(2, '0')}/${month.year}'),
+            trailing: Text(
+              'Rs ${monthTotal.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
         if (dates.isEmpty) const Card(child: ListTile(title: Text('No transactions found.'))),
-        ...dates.map((date) => Card(child: ExpansionTile(title: Text(date, style: const TextStyle(fontWeight: FontWeight.w800)), initiallyExpanded: true, children: [
+        ...dates.map((date) {
+          final dailyTotal = grouped[date]!.values.fold<double>(
+            0,
+            (totalAmount, item) => totalAmount + item.value,
+          );
+          return Card(child: ExpansionTile(
+            title: Text(date, style: const TextStyle(fontWeight: FontWeight.w800)),
+            trailing: Text(
+              'Rs ${dailyTotal.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            children: [
           SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
             columns: const [DataColumn(label: Text('Name')), DataColumn(label: Text('Quantity')), DataColumn(label: Text('Amount'))],
             rows: [
@@ -59,11 +93,13 @@ class _CumulativeHistoryPageState extends State<CumulativeHistoryPage> {
               DataRow(cells: [
                 const DataCell(Text('Total', style: TextStyle(fontWeight: FontWeight.w800))),
                 DataCell(Text('${grouped[date]!.values.fold<int>(0, (totalQuantity, item) => totalQuantity + item.quantity)}', style: const TextStyle(fontWeight: FontWeight.w800))),
-                DataCell(Text('Rs ${grouped[date]!.values.fold<double>(0, (totalAmount, item) => totalAmount + item.value).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                DataCell(Text('Rs ${dailyTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800))),
               ]),
             ],
           )),
-        ]))),
+            ],
+          ));
+        }),
       ]);
     },
   );

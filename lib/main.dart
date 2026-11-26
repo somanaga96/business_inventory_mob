@@ -396,6 +396,7 @@ class _InventoryHomeState extends State<InventoryHome> {
         PurchasePage(
           products: products,
           submit: recordTransaction,
+          recordExpense: recordExpense,
           language: productLanguage,
         ),
         PurchaseHistoryPage(
@@ -796,6 +797,22 @@ class _InventoryHomeState extends State<InventoryHome> {
       date: date,
     );
   }
+
+  Future<void> recordExpense(
+    String description,
+    double amount,
+    String party,
+    String city,
+    String note,
+    DateTime date,
+  ) => controller.recordExpense(
+    description: description,
+    amount: amount,
+    party: party,
+    city: city,
+    note: note,
+    date: date,
+  );
 
   Future<void> editProduct(Product p) async {
     final name = TextEditingController(text: p.name);

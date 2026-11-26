@@ -41,6 +41,7 @@ class _BillsState extends State<Bills> {
   bool billNumberReady = false;
   bool detailsCollapsed = false;
   _LastCompletedOrder? lastCompletedOrder;
+  _LastCompletedOrder? editingOrder;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? billSubscription;
   static const months = [
     'Jan',
@@ -123,14 +124,28 @@ class _BillsState extends State<Bills> {
   }
 
   int availableQuantity(Product item) =>
-      item.quantity - (cart[item.id] ?? 0);
+      item.quantity +
+      (editingOrder?.items
+              .where((line) => line.productId == item.id)
+              .firstOrNull
+              ?.quantity ??
+          0) -
+      (cart[item.id] ?? 0);
+
+  int maximumQuantity(Product item) =>
+      item.quantity +
+      (editingOrder?.items
+              .where((line) => line.productId == item.id)
+              .firstOrNull
+              ?.quantity ??
+          0);
 
   void add() {
     final qty = int.tryParse(quantity.text) ?? 0;
     if (product == null || qty <= 0) return;
     final salePrice = double.tryParse(price.text) ?? product!.cost;
     final existing = cart[product!.id] ?? 0;
-    if (existing + qty > product!.quantity) return;
+    if (existing + qty > maximumQuantity(product!)) return;
     setState(() {
       cart[product!.id] = existing + qty;
       prices[product!.id] = salePrice;
@@ -188,9 +203,9 @@ class _BillsState extends State<Bills> {
 
     final newQuantity = int.tryParse(quantityController.text) ?? 0;
     final newPrice = double.tryParse(priceController.text);
-    if (newQuantity <= 0 || newQuantity > item.quantity || newPrice == null || newPrice < 0) {
+    if (newQuantity <= 0 || newQuantity > maximumQuantity(item) || newPrice == null || newPrice < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enter a quantity from 1 to ${item.quantity} and a valid price.')),
+        SnackBar(content: Text('Enter a quantity from 1 to ${maximumQuantity(item)} and a valid price.')),
       );
       return;
     }
@@ -271,22 +286,24 @@ class _BillsState extends State<Bills> {
     final completedCity = city.text.trim();
     final completedTotal = total;
     final completedAt = DateTime.now();
-    final completedItems = saleItems
-        .map(
-          (item) => _LastOrderItem(
-            name: item.product.nameFor(widget.language),
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-          ),
-        )
-        .toList();
+    late List<_LastOrderItem> completedItems;
     try {
-      await widget.controller.recordSale(
+      final transactionIds = await widget.controller.recordSale(
         items: saleItems,
         party: customer.text.trim(),
         city: city.text.trim(),
         billNumber: billNumber,
         date: completedAt,
+      );
+      completedItems = List.generate(
+        saleItems.length,
+        (index) => _LastOrderItem(
+          transactionId: transactionIds[index],
+          productId: saleItems[index].product.id,
+          name: saleItems[index].product.nameFor(widget.language),
+          quantity: saleItems[index].quantity,
+          unitPrice: saleItems[index].unitPrice,
+        ),
       );
     } catch (error) {
       if (mounted) {
@@ -342,6 +359,151 @@ class _BillsState extends State<Bills> {
         billSequence++;
         billNumber = billNumberFor(DateTime.now(), billSequence);
       });
+    }
+  }
+
+  void _editLastOrder() {
+    final order = lastCompletedOrder;
+    if (order == null) {
+      return;
+    }
+    setState(() {
+      editingOrder = order;
+      cart
+        ..clear()
+        ..addEntries(order.items.map((item) => MapEntry(item.productId, item.quantity)));
+      prices
+        ..clear()
+        ..addEntries(order.items.map((item) => MapEntry(item.productId, item.unitPrice)));
+      customer.text = order.customer;
+      city.text = order.city;
+      detailsCollapsed = false;
+    });
+  }
+
+  void _cancelLastOrderEdit() {
+    setState(() {
+      editingOrder = null;
+      cart.clear();
+      prices.clear();
+      customer.clear();
+      city.clear();
+      detailsCollapsed = false;
+      quantity.text = '1';
+      price.clear();
+      product = null;
+    });
+  }
+
+  Future<void> _saveLastOrderChanges() async {
+    final order = editingOrder;
+    if (order == null || cart.isEmpty) {
+      return;
+    }
+    if (customer.text.trim().isEmpty || city.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shop/customer name and city are required.')),
+      );
+      return;
+    }
+    final existingItems = order.items.map((item) => (
+      transactionId: item.transactionId,
+      productId: item.productId,
+      oldQuantity: item.quantity,
+      quantity: cart[item.productId] ?? 0,
+      unitPrice: prices[item.productId] ?? item.unitPrice,
+    )).toList();
+    final existingProductIds = order.items.map((item) => item.productId).toSet();
+    final newItems = <({Product product, int quantity, double unitPrice})>[];
+    for (final entry in cart.entries) {
+      if (existingProductIds.contains(entry.key)) {
+        continue;
+      }
+      final item = find(entry.key);
+      if (item == null) {
+        return;
+      }
+      newItems.add((
+        product: item,
+        quantity: entry.value,
+        unitPrice: prices[entry.key] ?? item.cost,
+      ));
+    }
+    try {
+      final newTransactionIds = await widget.controller.editLastSaleOrder(
+        items: existingItems,
+        newItems: newItems,
+        party: customer.text.trim(),
+        city: city.text.trim(),
+        billNumber: order.billNumber,
+        date: order.completedAt,
+      );
+      final updatedItems = <_LastOrderItem>[];
+      for (final item in order.items) {
+        final updatedQuantity = cart[item.productId] ?? 0;
+        if (updatedQuantity == 0) {
+          continue;
+        }
+        updatedItems.add(_LastOrderItem(
+          transactionId: item.transactionId,
+          productId: item.productId,
+          name: item.name,
+          quantity: updatedQuantity,
+          unitPrice: prices[item.productId] ?? item.unitPrice,
+        ));
+      }
+      for (var index = 0; index < newItems.length; index++) {
+        final item = newItems[index];
+        updatedItems.add(_LastOrderItem(
+          transactionId: newTransactionIds[index],
+          productId: item.product.id,
+          name: item.product.nameFor(widget.language),
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        ));
+      }
+      final updatedOrder = _LastCompletedOrder(
+        billNumber: order.billNumber,
+        customer: customer.text.trim(),
+        city: city.text.trim(),
+        items: updatedItems,
+        total: updatedItems.fold(
+          0,
+          (totalValue, item) => totalValue + item.lineTotal,
+        ),
+        completedAt: order.completedAt,
+        receiptBytes: null,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        lastCompletedOrder = updatedOrder;
+        editingOrder = null;
+        cart.clear();
+        prices.clear();
+        customer.clear();
+        city.clear();
+        detailsCollapsed = false;
+        quantity.text = '1';
+        price.clear();
+        product = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Last order updated.')),
+      );
+    } on StateError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message.toString())),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update the last order.')),
+        );
+      }
     }
   }
 
@@ -641,6 +803,7 @@ class _BillsState extends State<Bills> {
           _LastOrderCard(
             order: lastCompletedOrder!,
             onPrint: () => _printLastOrder(lastCompletedOrder!),
+            onEdit: editingOrder == null ? _editLastOrder : null,
           ),
         ],
         const SizedBox(height: 88),
@@ -658,6 +821,14 @@ class _BillsState extends State<Bills> {
               padding: const EdgeInsets.all(4),
               child: Row(
                 children: [
+                  if (editingOrder != null) ...[
+                    IconButton(
+                      tooltip: 'Cancel editing last order',
+                      onPressed: _cancelLastOrderEdit,
+                      icon: const Icon(Icons.close),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: cart.isEmpty || !billNumberReady ? null : printBill,
@@ -672,12 +843,18 @@ class _BillsState extends State<Bills> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: cart.isEmpty || !billNumberReady ? null : complete,
+                      onPressed: cart.isEmpty || !billNumberReady
+                          ? null
+                          : editingOrder == null
+                          ? complete
+                          : _saveLastOrderChanges,
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(54),
                       ),
                       icon: const Icon(Icons.receipt_long),
-                      label: const Text('Complete sale'),
+                      label: Text(
+                        editingOrder == null ? 'Complete sale' : 'Save changes',
+                      ),
                     ),
                   ),
                 ],
@@ -712,11 +889,15 @@ class _LastCompletedOrder {
 
 class _LastOrderItem {
   const _LastOrderItem({
+    required this.transactionId,
+    required this.productId,
     required this.name,
     required this.quantity,
     required this.unitPrice,
   });
 
+  final String transactionId;
+  final String productId;
   final String name;
   final int quantity;
   final double unitPrice;
@@ -725,10 +906,15 @@ class _LastOrderItem {
 }
 
 class _LastOrderCard extends StatelessWidget {
-  const _LastOrderCard({required this.order, required this.onPrint});
+  const _LastOrderCard({
+    required this.order,
+    required this.onPrint,
+    this.onEdit,
+  });
 
   final _LastCompletedOrder order;
   final VoidCallback onPrint;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -799,6 +985,17 @@ class _LastOrderCard extends StatelessWidget {
               label: const Text('Print order'),
             ),
           ),
+          if (onEdit != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit last order'),
+              ),
+            ),
+          ],
         ],
       ),
     ),
